@@ -1,0 +1,242 @@
+1. What is Kubernetes?
+
+Kubernetes (K8s) = Container Orchestration Platform
+
+It manages, automates, scales, and monitors containerized applications.
+
+It is mainly used to manage Docker containers at large scale.
+
+Kubernetes was originally developed by Google and is now maintained by CNCF (Cloud Native Computing Foundation).
+
+The word “Kubernetes” has 10 letters.
+Between K and s there are 8 letters → so it is written as K8s.
+
+
+
+
+
+2. Why Kubernetes is Needed
+
+- Monolithic Application Example:
+
+    Like DMart – everything under one big store.
+    All code, logic, UI, database – tightly coupled.
+
+- Microservices Example:
+
+    Separate small shops for groceries, clothes, electronics.
+    Each service is independent and deployable separately.
+
+
+In microservices architecture:
+
+    There can be 10, 50, 100+ small services
+    Each service runs in its own container
+    Managing them manually is impossible
+
+
+Docker can run containers.
+
+But Docker alone cannot:
+    Auto-scale containers
+    Restart failed containers
+    Load balance traffic
+    Manage networking between containers
+
+👉 To manage many Docker containers efficiently, we need Kubernetes.
+
+
+Node
+A Node = Physical or Virtual Machine
+It is basically a server where Kubernetes runs workloads.
+
+Types of Nodes:
+Master Node (Control Plane)
+Worker Node
+
+Cluster
+Cluster = Multiple nodes working together
+Single node → simple setup
+Multi-node → production grade Kubernetes cluster
+
+
+
+
+
+
+
+Kubernetes Architecture:
+    two main part: control panel(master node components) and worker node component
+
+in control panel there are four main components
+    It is brain of Kubernetes
+    API server
+    Scheduler
+    Controller manager
+    ETCD
+
+in worker node there are main three components
+    it actually run the applications
+    Kubelet
+    container runtime
+    kube proxy
+
+
+
+
+API server
+    Entry point of Kubernetes cluster
+    All communication happens through API Server
+    Like a team lead / manager
+    kubectl, dashboard, internal components → all talk to API server
+
+    kubectl get pods = this command actually talks to the API server
+
+Scheduler
+    Decide on which worker node a pod should run
+    workes like HR assigning employees to department
+    Looks at:
+        Available CPU/RAM
+        Node health
+        Constaints
+    Scheduler does NOT run containers, it only decides placement.
+
+Controller manager
+    makes sure desired state = actual state
+    if something crashes, it tries to fix it
+    it's like project manager
+    Example:
+
+    You say: “I need 3 pods running”
+    If 1 pod dies → controller manager will create a new one
+
+    Different controllers:
+    Node Controller
+    Replication Controller
+    Deployment Controller
+    Endpoint Controller
+
+ETCD 
+    etcd = Key-Value Database of Kubernetes
+
+    Stores all cluster data:
+
+        Nodes
+        Pods
+        Configs
+        Secrets
+        Deployments
+
+    Very important point:
+
+        If etcd data is lost → entire cluster state is lost.
+
+    So etcd backup is critical.
+
+
+
+
+Kubelet 
+    Agent running on every worker node
+    it's like manager
+    Talks to API Server
+    Makes sure containers inside pods are running properly
+
+Container runtime
+    Software that runs containers
+    earlier: Docker
+    Now: containerd, CRI-O etc.
+
+Kube proxy
+    Handles networking inside Kubernetes
+    Responsible for:
+        Service networking
+        Load balancing between pods
+
+
+
+
+
+
+Pod - The Smallest Unit in Kubernetes
+
+- Kubernets does not run containers directly
+- it runs pods
+- docker containers are running inside pod
+
+    Pod = Wrapper around container(s)
+    Smallest deployable unit in Kubernetes
+    Usually contains:
+        1 main container
+        Sometimes helper containers (sidecars)
+
+
+
+
+
+
+High level flow:
+
+    Let’s connect everything:
+
+    Developer deploys an app using kubectl
+    Request goes to API Server
+    API server stores data in etcd
+    Scheduler decides:
+        “Run this pod on Worker Node 2”
+    Kubelet on Worker Node pulls image
+    Container runtime runs container inside Pod
+    Controller manager keeps monitoring
+
+kubernetes_pod_creation_flow.txt
+
+HIGH LEVEL FLOW: KUBERNETES POD CREATION
+
+1. THE REQUEST (CLIENT SIDE)
+   - User Command: The user executes `kubectl run` (or applies a YAML file).
+   - Client Processing: `kubectl` validates the command, converts the resource into a JSON object.
+   - Transmission: `kubectl` sends a POST request to the API Server (`kube-apiserver`).
+
+2. THE API SERVER & ETCD (AUTHENTICATION & STORAGE)
+   - API Server Ingest: The API Server receives the request.
+   - Security Checks:
+     * Authentication: Verifies who you are.
+     * Authorization: Verifies if you have permission to create pods.
+     * Admission Control: Checks quotas, limits, and validates object structure.
+   - Storage (Etcd): Once validated, the API Server writes the new Pod object to `etcd` (the cluster's database) with a status of `Pending`.
+   - Confirmation: `etcd` acknowledges the write to the API Server. The API Server responds to the `kubectl` client (e.g., "pod/nginx created").
+
+3. THE SCHEDULER (BINDING PHASE)
+   - Watch Loop: The Scheduler is constantly watching the API Server for new Pods that have no node assigned (`nodeName` is empty).
+   - Decision Making: The Scheduler detects the new `Pending` pod. It runs an algorithm to filter and score nodes (checking resources, taints, affinity).
+   - Assignment: The Scheduler selects a node (e.g., "Worker Node 2").
+   - Binding: The Scheduler sends a request to the API Server to BIND the Pod to "Worker Node 2". 
+   - Persistence: The API Server updates the Pod object in `etcd` to include the `nodeName`. 
+
+4. THE KUBELET (NODE EXECUTION)
+   - Watch Loop: The Kubelet running on "Worker Node 2" is constantly watching the API Server for Pods specifically assigned to its node.
+   - Trigger: The Kubelet sees the new Pod assignment.
+   - Image Pulling: The Kubelet instructs the Container Runtime (CRI) to pull the image if not present.
+   - Networking: The Kubelet calls the CNI Plugin to allocate an IP address for the Pod.
+   - Container Start: The Container Runtime starts the container inside the Pod.
+
+5. STATUS REPORTING
+   - Update: Once the container is running, the Kubelet updates the Pod status to `Running` and sends this status back to the API Server.
+   - Final Persistence: The API Server writes this new status to `etcd`.
+
+6. THE CONTROLLER MANAGER (RECONCILIATION)
+   - Monitoring: The Controller Manager (Deployment/ReplicaSet Controller) observes the new state via the API Server.
+   - Verification: It confirms that the current state (1 Running Pod) matches the desired state defined in the deployment.
+   - Loop: It continues to watch; if the pod crashes, it requests a new one to maintain the desired state.
+
+
+ 
+
+
+
+ 
+Building = Kubernetes cluster
+Floors = Nodes (VMs)
+Flats = Pods
+People = Containers / Apps
+Watchman = Service

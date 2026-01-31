@@ -1,0 +1,187 @@
+- we can create pod using two ways: imperative and declarative
+imperative = kubectl run nginx
+
+
+- To create cluster according to yaml file:  
+    kind create cluster --image kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f --name cka-cluster2 --config config.yaml
+
+- kubectl cluster-info --context kind-cka-cluster2 
+
+- if we want to create pod inside cluster, first we will make yaml file
+    kubectl run nginx --image=nginx --dry-run=client -o yaml > pod.yaml
+    kubectl create -f pod.yaml 
+    kubectl apply -f pod.yaml
+        This is the declarative way to manage resources and is generally considered best practice for production and CI/CD pipelines.
+    kubectl describe pod [name]
+    kubectl get pods
+
+    --dry-run=client : This is the most important flag. It tells kubectl to simulate the command locally without sending it to the Kubernetes cluster. It prevents the Pod from actually being created.
+
+- to get all the clusters:
+    kind get clusters
+    kubectl cluster-info cka-cluster1
+
+- switch the context to particular cluster:
+    kubectl config use-context kind-cka-cluster1 
+    kubectl get nodes
+    kubectl get pod -o wide
+
+
+
+
+
+================================================================================
+        DEEP DIVE: KIND ARCHITECTURE & KUBECONFIG AUTOMATION
+================================================================================
+
+1. THE CORE DOUBT: "IS KIND REAL KUBERNETES?"
+--------------------------------------------------------------------------------
+You asked: "Kind is not kubernet, it is just providing environment... right or wrong?"
+
+ANSWER: 
+It is technically "Real Kubernetes," but packaged differently.
+
+- Normal Kubernetes: Runs directly on physical servers (Bare Metal) or Virtual Machines (VMs).
+- Kind (Kubernetes IN Docker): Runs the exact same Kubernetes binaries, but inside a Docker Container.
+
+Think of it like this:
+If you run Windows on a physical laptop, it is Windows.
+If you run Windows inside a Virtual Machine on a Mac, it is STILL real Windows.
+Similarly, the software running inside the Kind container is the actual Kubernetes API.
+
+--------------------------------------------------------------------------------
+2. THE ARCHITECTURE: HOST VS. CONTAINER
+--------------------------------------------------------------------------------
+To understand how they talk, we must separate the two worlds running on your machine.
+
+WORLD A: YOUR LAPTOP (The Host)
+- Contains: Your Terminal, the 'kubectl' tool, the 'kind' CLI tool, and your configuration file (~/.kube/config).
+- Network: Localhost (127.0.0.1).
+
+WORLD B: DOCKER ENGINE
+- Contains: The Kind Container (The Node).
+- Inside the Container: The Kubernetes API Server is running, listening on port 6443.
+
+--------------------------------------------------------------------------------
+3. THE COMMUNICATION: HOW KUBECTL TALKS TO THE CONTAINER
+--------------------------------------------------------------------------------
+'kubectl' is just a remote control. It needs a URL to send commands to.
+
+Since the Kubernetes API is locked inside a container, Docker creates a "Tunnel" (Port Mapping).
+
+1. Docker takes the internal port (6443) of the container.
+2. It maps it to a random high-number port on your Laptop (e.g., 55000).
+3. Now, if you send traffic to 'localhost:55000', Docker forwards it instantly into the container to port 6443.
+
+--------------------------------------------------------------------------------
+4. THE MAIN CONFUSION: "HOW IS THE CONFIG FILE EDITED?"
+--------------------------------------------------------------------------------
+The Doubt: 
+"If Kubernetes is inside the container, how can it come out and edit my ~/.kube/config file on my laptop?"
+
+The Solution:
+The Container DOES NOT edit your file. The 'kind' CLI tool (on your laptop) does.
+
+There are two actors involved here:
+
+ACTOR 1: The 'kind' CLI Binary
+- Where does it live? On your Laptop (User's OS).
+- Permissions? It has full Read/Write access to your User Home Directory.
+
+ACTOR 2: The 'kind-control-plane' Container
+- Where does it live? Inside Docker.
+- Permissions? Restricted to the container. It cannot see your laptop files.
+
+THE SEQUENCE OF EVENTS (When you run 'kind create cluster'):
+
+1. [Laptop] You run the command `kind create cluster`.
+2. [Laptop -> Docker] The 'kind' CLI tells Docker: "Start the container."
+3. [Docker] Docker starts the container and assigns it an IP/Port.
+4. [Laptop -> Docker] The 'kind' CLI asks Docker: "What Port did you assign to that new container?"
+5. [Docker -> Laptop] Docker replies: "I assigned localhost:55000."
+6. [Laptop] The 'kind' CLI (which is already running on your laptop) opens your ~/.kube/config file and writes:
+   "Server: https://127.0.0.1:55000"
+
+--------------------------------------------------------------------------------
+5. THE ANALOGY (MANAGER VS. WORKER)
+--------------------------------------------------------------------------------
+To visualize why this is secure and logical:
+
+- THE USER (You): The Owner.
+- THE KIND CLI (Laptop): The Manager standing next to you.
+- THE CONTAINER (Docker): The Worker inside a glass cabin.
+- THE KUBECONFIG: The Manager's Diary.
+
+Step 1: You tell the Manager: "Hire a worker."
+Step 2: The Manager puts the Worker inside the glass cabin.
+Step 3: The Manager asks the Worker (through the glass): "What is your extension number?"
+Step 4: The Worker signals "55000".
+Step 5: The Manager takes out HIS pen and writes "55000" in HIS Diary.
+
+Note: The Worker never came out of the cabin to write in the diary. The Manager (who is outside) did the writing.
+
+--------------------------------------------------------------------------------
+SUMMARY
+--------------------------------------------------------------------------------
+1. Kind is real Kubernetes running inside Docker.
+2. kubectl talks to it via Port Forwarding (Network Tunnel).
+3. Your config file is updated by the 'kind' tool running on your OS, not by the container itself.
+
+
+
+
+
+
+FINAL UNDERSTANDING
+
+
+Command: Tum laptop par kind create cluster chalate ho.
+
+Container Start: kind tool (jo laptop par hai) Docker ko order deta hai, aur Docker ek Container start karta hai (isme Kubernetes chal raha hai).
+
+Data Fetch: kind tool Docker se poochta hai: "Iska Port kya hai aur Login ki Keys (Certificates) de do."
+
+Config Update: kind tool tumhare laptop ki ~/.kube/config file kholta hai aur usme Port + IP + Keys save kar deta hai.
+
+Kubectl Action: Jab tum kubectl get pods chalate ho:
+
+kubectl us file (config) ko padhta hai.
+
+Waha se Port aur Key leta hai.
+
+Us Port par call lagata hai (Docker Tunnel ke through).
+
+Aur Kubernetes API ko instruction deta hai.
+
+
+
+
+
+
+
+
+Another We have concept of deployment
+and it provide additional functionalities to the replicaset
+so deployment manages the replicaSet and replicaSet manages the pod
+
+suppose we need to upgrade the version of app from 1.1 to 1.2 and if use replicaSet then it would apply the changes and it will re-create the pod all at once and due to that user would face downtime for that brief period
+
+so we have to make sure that even though we are rolling out the changes to the live env users are not impacted for that purpose we use deployment
+deployment will do changes in the rolling update fashion, so it will update pod1 and while that pod is getting updated trafiic is being served by other two pods, it can also spin up a new pod to take care of trafficcd 
+
+kubectl get deploy
+
+for getting all the objects running in the cluster:
+    kubectl get all
+
+To check the history: 
+    kubectl rollout history deploy/nginx-deploy
+
+To rollback the change:
+    kubectl rollout undo deploy/nginx-deploy
+
+[Reference https://kubernetes.io/docs/reference/kubectl/quick-reference/]
+
+
+To generate the yaml file for deployment:
+    kubectl create deploy deploy/nginx-new --image=nginx --dry-run=client -o yaml > deploy.yaml

@@ -1,0 +1,170 @@
+- kubernets is a distributed system
+
+- Real kubernets is designed to run on:
+    - multiple machines
+    - multiple nodes
+    - real networking
+    - real production environments
+
+- but in real life we have one laptop, limited RAM etc... so we need a way to run a fake/lightweight kubernets cluster on our local machines and for that we need to use minikube, kind, k3s, docker desktop kubernets, microk8s
+These tools are basically local kubernets environments
+
+
+
+1. Understand Exactly What KIND Is Doing On Your Machine
+
+Since you are using KIND, you must be crystal clear about this:
+    When you run:
+        kind create cluster
+
+        You are NOT creating magic.
+        You are literally creating:
+            👉 Docker containers acting as Kubernetes nodes.
+            Run this right now:
+            docker ps
+
+        You will see something like:
+            kind-control-plane
+            kind-worker
+            kind-worker2
+
+Each of those containers is a full Linux machine running:
+    kubelet
+    kube-proxy
+    container runtime
+    networking stack
+
+    This means:
+    Your Kubernetes cluster = just Docker containers talking to each other.
+    If you don’t understand this mental model, you will never truly understand Kubernetes.
+
+
+WHAT HAPPENS WHEN WE RUN:
+    kubectl apply -f deployment.yaml
+
+Step 0- Before command
+we have:
+    A KIND cluster running
+    Control plane container
+    etcd database
+    API server
+    and we have deployment.yaml
+
+Step 1- Kubectl reads the file    
+    kubectl does only one job: it sends the YAML data to the Kubernets API server
+    kubectl is NOT Kubernetes.
+    kubectl = just a client tool (like Postman for Kubernetes)
+
+Step 2- Request goes to API server
+    API server is the brain/entry gate
+    kubectl says: Hey API server, here is a Deployment object, please create it
+
+other steps follows acoording to previous notes
+
+
+
+WHERE IS ETCD RUNNING IN KIND?
+
+- In KIND, everything is just Docker containers.
+when we run kind create cluster
+KIND creates a container like kind-control-plane, inside that container: etcd is running as a process
+to verify this we can use command docker ps , docker exec -it kind-control-plane bash, ps aux | grep etcd
+In KIND, etcd runs inside the control-plane Docker container.
+There is no separate machine.
+Everything is simulated.
+
+
+How Networking Works Between Pods in KIND?
+
+In Kubernetes:
+👉 Every Pod gets its own IP address
+And:
+👉 All pods can talk to all other pods directly
+WITHOUT NAT.
+
+In KIND:
+    - each node = docker container
+    inside those containers: KIND sets up a CNI (Container Network Interface)
+    Usually: kindnet (default CNI for KIND)
+
+When a pod is created:
+
+    CNI plugin assigns IP
+    Routes are configured
+    kube-proxy updates rules
+    Pod becomes reachable
+
+    for example pod A on worker1 and pod B on worker2
+    even though they are in diff docker containers 
+    they can still do: ping pod-b-ip
+    Because KIND sets up virtual network bridge between node containers.
+
+    Service Layer:
+    Normally we don't call pods directly
+    we create a service
+    service gives: stable IP+ DNS name
+
+    so communication becomes: frontend pod → service → backend pod
+    kube-proxy handles this routing.
+
+
+
+
+
+
+- To go inside docker container terminal we can use: docker exec -it [container_name] bash
+- To see actual files of etcd we can go to /var/lib/etcd/member and ls -F
+
+    by doing above we can get snap/ and wal/ 
+
+    wal/ is write ahead log : every single timw when we run kubectl create the change is instantly written here first, it's a seq log of every transaction, if the power goes cut, etcd replays this log to recover the data 
+
+    snap/ the save point, To prevent the WAL from growing forever, etcd periodically takes a "snapshot" of the current state and saves it here. it compresses old logs into single file to save space
+
+
+kubectl is like a website's front-end. It talks to the "manager" (API Server), who then talks to the database.
+
+etcdctl is like logging directly into the database backend. It bypasses the API Server and talks directly to etcd.
+
+
+You rarely use etcdctl in daily work. However, it is critical for:
+Backups & Restore: Taking snapshots of the cluster state (required for the CKA exam and disaster recovery).
+Debugging: Checking if data is actually being written when the API Server is broken.
+
+
+1. The API Version (ETCDCTL_API=3)
+
+    Etcd has two versions of its API: v2 and v3. They are incompatible. Kubernetes uses v3.
+    If you don't tell the tool to use v3, it might default to v2, and you will see "0" results even though data exists.
+    Fix: Always type ETCDCTL_API=3 before the command.
+
+2. The "Secret Handshake" (Certificates)
+Your etcd is secure. It uses TLS (HTTPS). It will not talk to you unless you present a valid ID card (Certificate). You cannot just run etcdctl get /. You must provide:
+
+    --cacert: The Authority that signed the ID cards.
+    --cert: Your ID card (Public key).
+    --key: Your password (Private key).
+
+3. The Endpoint
+You must tell it where etcd lives. Usually https://127.0.0.1:2379.
+
+ETCDCTL_API=3 etcdctl \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/apiserver-etcd-client.crt \
+  --key=/etc/kubernetes/pki/apiserver-etcd-client.key \
+  get / --prefix --keys-only
+
+
+
+kind = lifecycle management (create, start,stop,delete), it talks to docker daemon, it tells docker that please spin up a container and install kubernets components
+kind is the TV Manufacturer (Samsung/Sony). Its job is to build and set up the TV (the Cluster).
+kind itself is NOT Kubernetes. It is a program that creates Kubernetes.
+
+kubectl = Operational Management (Run pods, debug, view state). is the Universal Remote Control. Its job is to change the channels (deploy apps), adjust volume (scale pods), and check settings (logs). It doesn't care who built the TV (Kind, AWS, Google, or Minikube)—as long as it's a standard TV, the remote works.
+
+
+
+When you installed Docker Desktop on Windows, it didn't just install Docker. It also quietly installed a few common tools, including kubectl, to make your life easier. It bundled them together so you wouldn't have to hunt for them later.
+
+
+Kustomize is a tool for managing complex YAML files. Instead of copying and pasting YAML files for "Development", "Staging", and "Production", Kustomize allows you to keep one "Base" file and just apply small "Patches" (overlays) on top of it.

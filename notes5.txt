@@ -1,0 +1,69 @@
+Namespace = Kubernetes cluster ke andar logical partitions
+
+| Team       | Namespace |
+| ---------- | --------- |
+| Developers | `dev`     |
+| Testing    | `qa`      |
+| Production | `prod`    |
+
+
+dev ka pod → prod ko disturb nahi karega
+
+Same service name different namespaces me allowed
+
+
+Kubernetes me kya-kya namespace ke andar hota hai?
+
+    Ye sab namespace ke andar hota hai:
+    Pods
+    Services
+    Deployments
+    ConfigMaps
+    Secrets
+    Ingress
+    Jobs
+    Ye sab namespace scoped hote hain.
+
+
+    But kuch cheeze cluster-wide hoti hain:
+    Nodes
+    PersistentVolumes
+    StorageClass
+    Namespace itself
+    Ye cluster scoped hoti hain.
+
+
+
+
+To get all resource we will use: 
+    kubectl get all --namespace=kube-system
+
+
+
+
+MULTI CONATINER POD:
+
+- let's say a pod running on kubernets cluster and it has one app container eg. nginx.   
+  Now we can have additonal containers to support this app container and this container could be an init container that runs before the app container to do certain tasks or this could be sidecar/helper container that runs all the time with app conatiner and it provides certain input or it takes certain output from the app container 
+
+
+
+- When you run kubectl create and the YAML file doesn't specify a namespace in the metadata section, kubectl looks at your active configuration (kubeconfig) to decide where to put the resource.
+
+- we can verifty current context : 
+    kubectl config view --minify --output 'jsonpath={..namespace}'
+- switch back to default context : 
+    kubectl config set-context --current --namespace=default
+
+
+
+initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c']
+    args: ['until nslookup myservice.default.svc.cluster.local; do echo waiting for myservice; sleep 2; done;']
+
+    it will check if he gets network address of myservice then it will break and after that main app will start
+
+    for checking the status we can use -w command, it will montior the change in status
+    

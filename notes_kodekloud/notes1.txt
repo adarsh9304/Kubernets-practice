@@ -1,0 +1,129 @@
+Docker and containerd
+cli tools like crictl,nerdctl and ctr
+
+in the beginning there was docker and other tools like rocket
+but docker's user experience made working with containers super simple hence docker becomes most dominent container tool 
+
+kubernets was build to orchestrate docker specifically in the beginning and didn't support any other container solutions and then kubernets greq in popularity as container orchestratator, other container runtimes like rocket wanted in 
+
+so kubernets introduced an interface called container runtime interface (CRI), so cri allowed any vendor to work as container runtime for kubernets as long as they adhere to the OCI standards
+
+OCI means open container initiatives and it consists of an image spec and runtime spec. image specs means the specifications on how an image should be build and runtime spec defines the standards on how any container runtime should be develop
+
+earlier docker wasn't build to support the CRI standard but docker was used by most so kubernets had to continue to support docker as well, so kubernets introduce what is known as docker shim
+containerD is CRI compatible
+containerD can be used as a runtime on its own seperate from docker, we have containerD as a separate runtime and docker separtely 
+docker ship was removed in version 1.24 release of kubernets
+
+containerD member of CNCF 
+once we install containerd it comes with a command line CTR
+but ctr is not to be used for running and managing containers on production env, so better alternative of this nerd control tool (nerdctl)
+it provides a docker like cli for containerd
+
+DO EXPLORE ABOUT crictl
+
+--------------------------------------
+DOCKER vs CONTAINERD – HINGLISH SUMMARY
+--------------------------------------
+
+1)  Basic Idea
+
+-   Docker aur containerd dono container world ke part hain.
+-   Lekin dono ka role alag hai.
+
+Simple line: Docker = Full container platform containerd = Container run
+karne ka engine (runtime)
+
+2)  Container run ka real flow
+
+Jab tum command chalate ho: docker run nginx
+
+Actual flow: Docker → containerd → runc → Linux kernel
+
+Matlab: - Docker direct container nahi chalata - containerd aur runc
+actual container run karte hain
+
+3)  Docker kya hai?
+
+Docker ek complete platform hai jisme: - CLI (docker commands) - Image
+build system (docker build) - Container run (docker run) - Networking -
+Volumes - Logs - API
+
+Simple definition: Docker = Developer-friendly full container tool
+
+
+4)  containerd kya hai?
+
+containerd ek lightweight container runtime hai.
+
+Iska kaam: - Image pull karna - Container create karna - Start/stop
+karna - Container lifecycle manage karna
+
+Simple definition: containerd = Low-level engine jo container chalata
+hai
+
+
+5)  History (Important for interviews)
+
+Pehle: Docker ke andar sab kuchh built-in tha.
+
+Phir Kubernetes ko ek simple runtime chahiye tha. To Docker ne apna
+runtime part alag kar diya.
+
+Wahi runtime aaj containerd hai.
+
+Ab: - containerd ek independent project hai - CNCF ka part hai -
+Kubernetes direct containerd use karta hai
+
+
+6)  Architecture Difference
+
+Docker architecture: User → Docker CLI → Docker Engine → containerd →
+runc → Linux kernel
+
+containerd direct: User/Kubernetes → containerd → runc → Linux kernel
+
+
+7)  Feature Comparison
+
+Docker: - Full platform - Image build support - Easy CLI - Networking
+tools - Volume management - Developer-friendly
+
+containerd: - Sirf container runtime - No image build - Low-level
+commands - Mostly backend systems use karte hain
+
+
+8)  Practical Usage
+
+Developer kya use karta hai: docker build docker run docker logs
+
+Kubernetes kya use karta hai: containerd as runtime
+
+9)  runc kya hai?
+
+runc ek low-level tool hai jo: - Linux namespaces - cgroups
+
+use karke actual container create karta hai.
+
+Flow: containerd → runc → container
+
+10) Easy analogy
+
+Docker = Full car containerd = Engine runc = Piston movement
+
+11) Kab kya use hota hai
+
+Docker: - Local development - CI/CD - Image building - Developer
+workflows
+
+containerd: - Kubernetes clusters - Production environments - Cloud
+platforms
+
+
+12) Final one-line summary
+
+Docker ek full platform hai jo container build aur manage karta hai.
+containerd ek runtime hai jo actual container chalata hai. Docker
+internally containerd ka use karta hai.
+
+

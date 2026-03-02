@@ -1,0 +1,181 @@
+Docker host is machine where docker engine runs
+Docker host = OS + Docker Engine + Resources (CPU, RAM, Disk)
+
+Docker engine is software who manages containers, images, network and Storage
+    There are three part of docker engine
+    Docker cli: it will send the commands
+    Docker daemon(dockerd) : do real work like image pull, make container 
+    Rest API : communication between cli and daemon
+
+
+
+If we have linux laptop then laptop itself is docker host
+
+but if we have windows/macos containers are not being run directly that's why docker desktop creates internal linux VM , so actual docker host is linux vm not our computer 
+
+
+ip of container: 
+    docker exec -it container1 sh
+    ip a
+
+when we access through browser then we can use ip of laptop beacuse docker does port forwarding
+
+
+Multiple containers can listen on the same port internally because each container has its own network namespace. Port conflict happens only when mapping to the same host port.
+
+To deep dive into docker container use command: docker inspect [container_name]
+To check the logs of docker container: docker logs [container_name]
+
+
+
+docker run ubuntu cat /etc/*release*
+
+    In this command:
+    - Container is created from ubuntu image
+    - Main process = "cat /etc/*release*"
+    - cat reads files and exits
+    - As soon as cat exits → container STOPS
+
+    WHY CONTAINER STOPS WITHOUT docker stop
+        Because:
+        - Container is NOT a virtual machine
+        - Container is a wrapper around a process
+        - When the main process finishes, container lifecycle ends
+
+When container will stop after running?
+- one time task like cat, ls, echo
+- build job like npm install 
+- script
+
+When container will not stop after running?
+- web server like nginx 
+- database 
+- infinite loop
+
+
+Application logs hamesha STDOUT / STDERR par likho.
+Docker, Kubernetes, aur logging tools isi ko expect karte hain.
+
+Jo bhi language ho, logs console par jaane chahiye
+System.out.println()
+console.log()
+print()
+logger.info()
+
+The best practice for container logging is to write application logs to stdout and stderr, let Docker capture them, and forward them to a centralized logging system with proper rotation and retention.
+
+✔ Logs to STDOUT / STDERR
+✔ Use docker logs for debugging
+✔ Enable log rotation
+✔ Centralize logs
+✔ Use JSON + log levels
+❌ Don't store logs inside container filesystem
+
+Log rotation ka matlab hota hai
+purane logs ko limit ke baad archive / delete karna,
+taaki disk full na ho.
+
+
+
+To identify which os is used in image as base image we can do this:
+    docker run -it python:3.6 /bin/bash
+    cat /etc/os-release
+
+
+use run and bin/bash when we want to create new container and then go to it
+and use exec if we want to go to inside existing container
+use docker run when you want to create new container
+use docker start when you have exisiting stopped container
+
+
+TASK: SECURITY FOR DATABASE INCLUDES VOLUME AND CONTAINERS
+
+
+
+
+
+================================
+ENTRYPOINT vs CMD – SIMPLE NOTES
+================================
+
+ENTRYPOINT:
+- Container ka main executable hota hai
+- Decide karta hai "kya chalega"
+- Usually override nahi karte
+- Example:
+  ENTRYPOINT ["docker-entrypoint.sh"]
+
+CMD:
+- Default command / arguments hoti hain
+- Decide karta hai "kaise chalega"
+- docker run ke time override ho sakta hai
+- Example:
+  CMD ["mysqld"]
+
+--------------------------------
+
+ENTRYPOINT + CMD:
+- ENTRYPOINT fixed rehta hai
+- CMD ENTRYPOINT ke arguments ban jaata hai
+
+Example:
+ENTRYPOINT ["echo"]
+CMD ["hello"]
+Output: hello
+
+--------------------------------
+
+docker run behavior:
+- Sirf CMD ho → docker run command CMD ko replace kar deta hai
+- ENTRYPOINT + CMD ho → ENTRYPOINT same, CMD replace
+
+CMD override:
+- docker run image ls
+
+ENTRYPOINT override:
+- docker run --entrypoint /bin/bash image
+
+--------------------------------
+
+Shell vs Exec form:
+- Shell form (avoid):
+  CMD echo hello
+- Exec form (recommended):
+  CMD ["echo","hello"]
+
+Reason:
+- Exec form me signals properly handle hote hain
+
+--------------------------------
+
+Database images (MySQL example):
+- ENTRYPOINT → docker-entrypoint.sh
+- CMD → mysqld
+- ENTRYPOINT initialization karta hai
+- CMD actual service start karta hai
+
+--------------------------------
+
+Extra points:
+- ENTRYPOINT ke bina CMD kaam karta hai
+- CMD ke bina ENTRYPOINT kaam karta hai
+- Multiple CMD allowed nahi (last valid)
+- CMD ko argument ki tarah use kar sakte hain
+
+Example:
+ENTRYPOINT ["ping"]
+CMD ["google.com"]
+
+--------------------------------
+
+When to use:
+- ENTRYPOINT → fixed behavior chahiye
+- CMD → default + flexible behavior
+
+================================
+
+
+
+
+
+

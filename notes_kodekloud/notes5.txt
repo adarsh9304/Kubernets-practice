@@ -1,0 +1,541 @@
+kubelet is node agent of kubernets, it runs on every node 
+it takes instruction from api server and it will run the pod on node, giving instructions to container runtime and moniter the health of pod 
+
+Normal pod create flow:
+
+kubectl
+   ↓
+API Server
+   ↓
+Scheduler (decide karega kaunsa node)
+   ↓
+kubelet (node par)
+   ↓
+Container runtime
+   ↓
+Container start
+
+
+static pod: Static Pod is a pod managed directly by kubelet using local manifest files on a node.
+    Static Pod API server se create nahi hota.
+    Isko kubelet directly local file se create karta hai.
+
+    Kubelet ke paas ek configuration hoti hai jisme ek folder defined hota hai.
+    Usaually: /etc/kubernetes/manifests 
+    Kubelet continuously is folder ko watch karta hai.
+
+    YAML file
+    ↓
+    /etc/kubernetes/manifests
+    ↓
+    kubelet detect karta hai
+    ↓
+    pod create
+    ↓
+    container runtime container start
+
+    Agar file change hui → pod restart
+    Agar file delete → pod delete
+
+
+    Jab Static Pod run hota hai to kubelet API server ko mirror pod create karne ko bolta hai.
+    kubectl get pods me Static Pod ko dekh sakte ho.
+
+    Master node par ye components Static Pod hote hain:
+
+        kube-apiserver
+        etcd
+        kube-scheduler
+        kube-controller-manager
+
+    now let's talk about uses, so in normal situation api server it self is a pod, now who will start that pod, it itself is a down, so static pod solve this problem. kubelet directly run the control plane containers 
+
+    static pod is generally created by cluster setup tool like kubeadm 
+
+
+
+
+
+Monitoring: 
+
+    Metrics Server → basic CPU & memory metrics
+
+    Prometheus → full monitoring system
+
+    ELK → logs analysis
+
+    | Feature  | Metrics Server   | Prometheus            |
+    | -------- | ---------------- | --------------------- |
+    | Purpose  | basic metrics    | advanced monitoring   |
+    | Data     | CPU & memory     | thousands metrics     |
+    | Storage  | store nahi karta | time-series database  |
+    | Use      | autoscaling      | monitoring & alerting |
+    | Commands | kubectl top      | dashboards            |
+
+
+    for simple logging for particular container:
+        kubectl logs -f [pod_name] [conatiner_name]
+
+
+in dockerfile
+    CMD container start hone par default command run karta hai.
+    User CMD ko override kar sakta hai.
+
+    ENTRYPOINT container ka main command hota hai.
+    Yaha override nahi hua — argument add ho gaya.
+
+
+The command from the kubernet file .yaml will override the entrypoint in the dockerfile and argument in the kubernet file will override cmd 
+
+
+
+Que: create a pod with the given specifications. by default it displays a blue background. set the given command line argument to change it to green
+
+ans: kubectl run webapp-green --image=webapp-color -- --color green
+     here extra -- for going into docker image argument 
+
+
+
+
+
+================================================================================
+KUBERNETES CONFIGMAP MASTERY - COMPREHENSIVE NOTES
+================================================================================
+
+1. CORE CONCEPTS
+--------------------------------------------------------------------------------
+Definition: 
+A ConfigMap is an API object used to store non-confidential data in key-value pairs. 
+
+Purpose: 
+To decouple environment-specific configuration from container images. This allows 
+you to change settings (DB Host, UI Colors, Feature Flags) without rebuilding the 
+Docker image, following the 12-Factor App methodology.
+
+Key Distinction:
+- ConfigMap: For plain text data (URLs, non-sensitive keys).
+- Secret: For sensitive data (Passwords, API Tokens, SSH Keys).
+
+--------------------------------------------------------------------------------
+2. CREATION METHODS
+--------------------------------------------------------------------------------
+
+A. Imperative (Command Line - Fast/Temporary)
+   Use for quick testing or generating initial YAML.
+   
+   # From literal values
+   kubectl create configmap app-config --from-literal=APP_COLOR=blue --from-literal=LOG_LEVEL=info
+
+   # From a file (Key becomes filename, Value becomes file content)
+   kubectl create configmap app-config --from-file=app.properties
+
+B. Declarative (YAML Manifest - Best Practice/Production)
+   Use for version control (GitOps) and reproducibility.
+
+   # File: configmap.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: app-config
+     namespace: default
+   data:
+     APP_COLOR: "blue"
+     LOG_LEVEL: "info"
+     DATABASE_URL: "jdbc:postgresql://db-host:5432/mydb"
+
+   # Apply command:
+   kubectl apply -f configmap.yaml
+
+--------------------------------------------------------------------------------
+3. INJECTING CONFIGMAPS INTO PODS
+--------------------------------------------------------------------------------
+
+Method A: envFrom (Bulk Import)
+-------------------------------
+Injects ALL key-value pairs from the ConfigMap as environment variables.
+- Pros: Concise YAML, automatic updates for new keys.
+- Cons: Less control, potential naming conflicts, imports unused data.
+
+   spec:
+     containers:
+       - name: my-app
+         envFrom:
+           - configMapRef:
+               name: app-config
+
+Method B: valueFrom / configMapKeyRef (Selective Import)
+--------------------------------------------------------
+Injects SPECIFIC keys from the ConfigMap into specific environment variables.
+- Pros: Explicit, allows renaming/aliasing, secure (only exposes needed data).
+- Cons: Verbose YAML (more lines of code).
+
+   spec:
+     containers:
+       - name: my-app
+         env:
+           - name: COLOR_VAR        # Custom variable name inside container
+             valueFrom:
+               configMapKeyRef:
+                 name: app-config   # Source ConfigMap
+                 key: APP_COLOR     # Specific Key to fetch
+
+Method C: Volume Mount (File Injection)
+---------------------------------------
+Mounts the ConfigMap keys as files inside a directory.
+- Use Case: When the app expects a config file (e.g., nginx.conf, redis.conf).
+- Note: Updates to ConfigMap update the file automatically (after delay), unlike Env Vars.
+
+--------------------------------------------------------------------------------
+4. OPERATIONAL WORKFLOW (UPDATES & RESTARTS)
+--------------------------------------------------------------------------------
+
+The Immutability Challenge:
+Pods using Environment Variables do NOT update automatically when the ConfigMap changes.
+You must restart the Pods to pick up the new values.
+
+Workflow:
+1. Edit the ConfigMap:
+   kubectl edit configmap app-config
+
+2. Restart the Pods (to refresh Env Vars):
+   # For a standalone Pod:
+   kubectl delete pod <pod-name>
+   kubectl apply -f pod.yaml
+
+   # For a Deployment (Zero-downtime restart):
+   kubectl rollout restart deployment <deployment-name>
+
+--------------------------------------------------------------------------------
+5. CHEAT SHEET: ESSENTIAL COMMANDS
+--------------------------------------------------------------------------------
+
+# View ConfigMap details (Check keys and values)
+kubectl describe configmap <map-name>
+
+# Export Pod YAML (Clean this before reusing!)
+kubectl get pod <pod-name> -o yaml > pod_debug.yaml
+(Tip: Remove 'status', 'uid', 'resourceVersion', 'creationTimestamp' lines)
+
+# Check Environment Variables inside a running Pod
+kubectl exec <pod-name> -- env
+
+# Check Environment Variables for a specific container in a multi-container Pod
+kubectl exec <pod-name> -c <container-name> -- env
+
+--------------------------------------------------------------------------------
+6. BEST PRACTICES & LIMITATIONS
+--------------------------------------------------------------------------------
+
+1. Size Limit: 
+   ConfigMaps are limited to 1 MiB. For larger data, use a Volume or external DB.
+
+2. Security: 
+   NEVER store passwords in ConfigMaps. They are stored in plain text. 
+   Use Kubernetes Secrets for sensitive data.
+
+3. Immutable ConfigMaps:
+   You can set `immutable: true` in the YAML to prevent accidental updates.
+
+4. Naming Convention:
+   Use consistent naming (e.g., <app-name>-config) to easily identify relationships.
+
+================================================================================
+END OF NOTES
+================================================================================
+
+
+
+
+
+
+
+================================================================================
+KUBERNETES CONFIGMAP & NODE.JS INTEGRATION - COMPREHENSIVE NOTES
+================================================================================
+
+1. THE CORE CONCEPT: HOW THE CONNECTION WORKS
+--------------------------------------------------------------------------------
+Many beginners confuse how a value inside Kubernetes (YAML) reaches the logic 
+inside the code (JavaScript). It is not magic; it happens via the Operating System.
+
+The "3-Step Connection" Flow:
+
+   [ Step 1: ConfigMap ]  --->  [ Step 2: Kubernetes Pod ]  --->  [ Step 3: Node.js Code ]
+   (Storage)                    (Injection)                       (Consumption)
+
+   1. Storage (The "What"):
+      You define the data in the ConfigMap.
+      Example: APP_COLOR=blue
+
+   2. Injection (The "How"):
+      Kubernetes takes that data and injects it into the Container's OS as an 
+      ENVIRONMENT VARIABLE.
+      Background Command: export APP_COLOR="blue"
+
+   3. Consumption (The "Where"):
+      Your Node.js code reads the variable from the OS using 'process.env'.
+
+--------------------------------------------------------------------------------
+2. ACCESSING VARIABLES IN NODE.JS
+--------------------------------------------------------------------------------
+Unlike Python (which uses os.environ), Node.js uses a global object called 
+`process`.
+
+Syntax:
+   process.env.VARIABLE_NAME
+
+Example Scenario: 
+You want to toggle a "Sale Banner" feature.
+
+A. In Kubernetes (ConfigMap):
+   data:
+     SHOW_BANNER: "true"
+
+B. In Node.js (Application Code):
+   if (process.env.SHOW_BANNER === "true") {
+       console.log("Show the sale banner!");
+   } else {
+       console.log("Show normal homepage.");
+   }
+
+*IMPORTANT NOTE:* Everything coming from a ConfigMap is a STRING. Even if you write `PORT: 3000` 
+in YAML, Node.js sees it as "3000". You must convert it (parse) if you need a 
+Number or Boolean.
+
+--------------------------------------------------------------------------------
+3. BEST PRACTICES FOR PRODUCTION (THE "PRO" WAY)
+--------------------------------------------------------------------------------
+Directly using `process.env.KEY` everywhere in your code is bad practice for 
+large applications. If a key is missing, the app might crash unexpectedly.
+
+Recommended Pattern: The "Central Config" Module
+
+Create a separate file (e.g., config.js) to gather, validate, and export 
+settings.
+
+Step A: Create 'config.js'
+--------------------------
+const config = {
+    // 1. Set Defaults: Use '||' to provide a fallback if ConfigMap is missing
+    appColor: process.env.APP_COLOR || 'blue',
+
+    // 2. Type Conversion: Convert Strings to Numbers/Integers
+    port: parseInt(process.env.PORT, 10) || 3000,
+
+    // 3. Boolean Logic: Convert "true" string to actual Boolean
+    isBannerVisible: process.env.SHOW_BANNER === 'true',
+
+    // 4. Validation: Crash immediately if critical data is missing (Fail Fast)
+    dbUrl: process.env.DB_URL
+};
+
+if (!config.dbUrl) {
+    throw new Error("FATAL ERROR: DB_URL is missing! Check Kubernetes ConfigMap.");
+}
+
+module.exports = config;
+
+Step B: Use in 'server.js'
+--------------------------
+const config = require('./config'); // Import the central config
+
+console.log(`Starting app on port ${config.port}`); 
+// Now you don't need to type process.env.PORT ever again.
+
+--------------------------------------------------------------------------------
+4. SUMMARY OF WORKFLOW
+--------------------------------------------------------------------------------
+1. Developer writes code using `process.env.MY_VAR` (or central config).
+2. DevOps creates a ConfigMap with `MY_VAR=some_value`.
+3. DevOps references the ConfigMap in the Pod YAML (`envFrom` or `valueFrom`).
+4. Kubernetes starts the Pod and sets the OS environment variable.
+5. Node.js starts, reads the variable, and the app behaves accordingly.
+
+================================================================================
+END OF NOTES
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+KUBERNETES SECRETS - COMPREHENSIVE NOTES
+================================================================================
+
+1. CORE CONCEPT: WHAT IS A SECRET?
+--------------------------------------------------------------------------------
+Definition:
+A Secret is an object that contains a small amount of sensitive data such as:
+- Passwords
+- OAuth Tokens
+- SSH Keys
+
+Difference from ConfigMap:
+- ConfigMap: "The Notice Board" (Public data like URLs, Colors).
+- Secret: "The Sealed Envelope" (Private data like Passwords).
+
+Why use it?
+To keep sensitive data out of your application code and GitHub repositories.
+
+--------------------------------------------------------------------------------
+2. HOW IT WORKS: ENCODING VS. ENCRYPTION
+--------------------------------------------------------------------------------
+By default, Kubernetes Secrets are stored as Base64 ENCODED strings.
+
+IMPORTANT: 
+Base64 is NOT Encryption. It is just Obfuscation (hiding text).
+Anyone who can see the Secret can decode it back to plain text easily.
+
+Example:
+- Plain Text:  "password"
+- Base64:      "cGFzc3dvcmQ="
+
+When a Pod starts, Kubernetes automatically DECODES the value and injects the 
+original plain text (e.g., "password") into the container.
+
+--------------------------------------------------------------------------------
+3. CREATION METHODS
+--------------------------------------------------------------------------------
+
+A. Imperative (Command Line - Easiest)
+   Use this to create secrets quickly without dealing with Base64 manually.
+   
+   # Generic Secret (Key-Value pair)
+   kubectl create secret generic db-pass --from-literal=password=supersecret123
+
+B. Declarative (YAML - For Version Control)
+   If you write YAML manually, you have two options:
+
+   Option 1: Using 'data' (You must provide Base64 string manually)
+   --------------------------------------------------------------
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: db-pass
+   data:
+     password: c3VwZXJzZWNyZXQxMjM=  <-- You must encode this yourself!
+
+   Option 2: Using 'stringData' (Easier - K8s encodes it for you)
+   --------------------------------------------------------------
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: db-pass
+   stringData:
+     password: supersecret123        <-- Write plain text here
+
+--------------------------------------------------------------------------------
+4. INJECTING SECRETS INTO PODS
+--------------------------------------------------------------------------------
+Just like ConfigMaps, there are two main ways to use Secrets.
+
+Method A: Environment Variables (Most Common)
+---------------------------------------------
+Use 'secretKeyRef' to inject the value as an environment variable.
+
+   spec:
+     containers:
+       - name: backend-app
+         env:
+           - name: DB_PASSWORD      # Variable name inside the container
+             valueFrom:
+               secretKeyRef:        # <--- Note the change from configMapKeyRef
+                 name: db-pass      # Name of the Secret object
+                 key: password      # The key inside the Secret
+
+Method B: Volume Mounts (For Files)
+-----------------------------------
+Use this for SSH keys or SSL Certificates that need to be files.
+This mounts the secret as a file at a specific path (e.g., /etc/certs/key.pem).
+
+--------------------------------------------------------------------------------
+5. HOW THE APPLICATION (NODE.JS) SEES IT
+--------------------------------------------------------------------------------
+This is the most confusing part for beginners, but it is actually simple.
+
+1. You create Secret: (Encoded) "cGFzc3dvcmQ="
+2. Kubernetes injects: (Decoded) "password"
+3. Node.js reads: process.env.DB_PASSWORD
+
+Your code DOES NOT need to decode anything. 
+To the code, it looks just like a normal environment variable.
+
+Code Example:
+   const dbPassword = process.env.DB_PASSWORD;
+   // Returns "supersecret123", not the Base64 string.
+
+--------------------------------------------------------------------------------
+6. SECURITY BEST PRACTICES & WARNINGS
+--------------------------------------------------------------------------------
+1. Not Encrypted by Default: 
+   Secrets are stored in etcd (K8s database). If a hacker gets access to etcd, 
+   they can read your secrets unless "Encryption at Rest" is enabled in the cluster.
+
+2. RBAC (Role-Based Access Control):
+   Restrict who can "get" or "list" secrets. Developers might need to see 
+   ConfigMaps, but they should not have permission to view Secrets.
+
+3. GitOps:
+   NEVER commit Secret YAML files with real passwords to GitHub. 
+   Use tools like "Sealed Secrets" or "External Secrets Operator" for GitOps.
+
+================================================================================
+END OF NOTES
+================================================================================
+
+
+
+
+to convert normal text to encode: echo -n 'any_word' | base64 
+to convert encode to normal text: echo -n 'bXlzww' | base64 --decode 
+
+
+
+Agar aapne YAML mein data: likha hai, toh Kubernetes kuch nahi karega. Wo maanta hai ki aapne pehle se hi Base64 encode karke value daali hai.
+
+Ye beginners aur developers ke liye sabse badhiya feature hai. Agar aap YAML mein stringData: likhte ho, toh Kubernetes samajh jata hai ki "Bhai ne plain text diya hai, mujhe ise encode karna hai."
+
+Jab aap kubectl create secret generic... command chalate ho, toh Kubernetes hamesha khud se encode karta hai. Aapko tension lene ki zaroorat nahi.
+
+
+
+Encrypting Confidential Data at Rest:
+
+Encryption at Rest ka simple matlab hai: "Jab data hard disk pe save ho, tab wo encrypted (locked) hona chahiye."
+By default, Kubernetes Secrets ko Encrypt nahi karta. Wo sirf Base64 Encode karta hai.
+
+    Aapne Secret banaya: password=123.
+    Kubernetes ne usko Base64 kiya: MTIz.
+    Kubernetes ne usko apne database (etcd) mein save kar diya.
+
+if encryption at rest is enable: API Server (Gatekeeper): Database (etcd) mein likhne se pehle, wo ek Encryption Key uthata hai.
+
+to check the encrypttion at rest is enable or not: 
+    ps -aux | grep kube-api | grep "encryption-provider-config"
+
+    ps= process status 
+    a → show processes for all users
+    u → display user-oriented format (CPU, memory, user, etc.)
+    x → include processes not attached to a terminal (like system services)
+    The pipe sends the output of the previous command as input to the next command.
+    grep searches text for a pattern.
+
+    encryption-provider-config: This flag is used to enable data encryption for Kubernetes secrets in etcd.
+
+
+    also we can check /etc/kubernets/manifests and inside this kube-apiserver.yaml 
+
+https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+
+
+
+

@@ -1,0 +1,105 @@
+if we want to assign a pod to particular node then we can use nodeName 
+if we want to assign node to exisitng node then we have to use binding object 
+
+kubernets looks at all pods and those who have not specify property of nodename are the candidates for scheduling 
+
+if the pod is in pending state and if we have not additional detail when we run describe command that basically means that scheduler has not done the job of scheduling the pod on a node, check it will be none at node field 
+
+run the command:
+    kubectl get pods -n kube-system 
+
+    there should be scheduler running
+
+if we don't want to run get pod command continuosly, we can use --watch parameter
+it will logs when the status change
+
+suppose we want to get list of pods in particular:
+    kubectl get pods --selector env=dev 
+suppose we want to get count of pods in particular:
+    kubectl get pods --selector env=dev --no-header | wc -l 
+
+for replicaset to manage the pod, there should be match of selector of replicaset and label of pod 
+
+for the scnario where we want to restrict some pods to go to particular node and only want some pods to go to that node in that case we use concept of taints and tolerations
+there are three kind of taint effect noschedule, prefernoschedule and noexecute 
+
+also for above concept refer node affinity 
+
+
+Resources:
+
+1 count of CPU is equivalent to 1 vCPU in AWS or 1 GCP Core or 1 Azure Core
+
+in the CPU behaviour we have four types:
+    No request and No limit
+    No request and limit
+    Requests and limit
+    Request and no limit = ideal 
+
+
+suppose we have running pod and we want to increasse memory then in tthis case:
+    kubectl get pod elephant -o yaml > elephant.yaml
+    edit the memory 
+    kubectl replace --force -f elephant.yaml
+
+
+Tricks:
+1. Use kubectl run + --dry-run to Generate YAML Instantly
+2. kubectl explain = Built-in Documentation
+3. Use kubectl get -o yaml to Modify Existing Resources
+4. Use kubectl edit for Instant Changes
+5. Use Aliases + Autocomplete
+
+
+Node Affinity Kubernetes ka scheduling feature hai jo decide karta hai ki pod kis node par run ho sakta hai ya nahi based on node labels. Simple words me: Node Affinity = rules jo Kubernetes scheduler ko batati hain ki pod ko kis type ke node par place karna hai.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+  containers:
+  - name: nginx
+    image: nginx
+
+
+1️⃣ requiredDuringSchedulingIgnoredDuringExecution
+Ye hard rule hai. Agar node rule match nahi karta to pod schedule hi nahi hoga. Matlab pod pending state me rahega jab tak matching node na mile.
+
+2️⃣ preferredDuringSchedulingIgnoredDuringExecution
+Ye soft rule hai. Scheduler try karega ki pod preferred node par chale, lekin agar possible na ho to kisi aur node par bhi schedule kar dega.
+
+“IgnoredDuringExecution” ka matlab hai ki pod schedule hone ke baad agar node label change ho jaye to pod automatically move nahi hota.
+
+
+
+| Feature     | Node Selector        | Node Affinity           | Pod Affinity               |
+| ----------- | -------------------- | ----------------------- | -------------------------- |
+| Works with  | Node labels          | Node labels             | Pod labels                 |
+| Complexity  | Simple               | Advanced rules          | Pod-to-pod relationship    |
+| Flexibility | Low                  | High                    | High                       |
+| Use case    | Basic node selection | Advanced node placement | Keep related pods together |
+
+
+
+
+Database should run only on SSD nodes → use Node Selector
+Machine learning service should run on GPU nodes → use Node Affinity
+Backend service should run close to database pods for low latency → use Pod Affinity
+Multiple replicas of the same service should not run on the same node → use Pod Anti-Affinity
+
+
+
+
+
+A Kubernetes DaemonSet is a Kubernetes workload resource that ensures one pod runs on every node in a cluster (or on selected nodes). Unlike a Kubernetes Deployment, which runs a specified number of replicas, a DaemonSet automatically creates one pod per node. If a new node is added to the cluster, Kubernetes automatically schedules the DaemonSet pod on that node; if a node is removed, the corresponding pod is also removed. DaemonSets are commonly used for node-level services that must run on every node, such as log collection, monitoring agents, or networking components. Typical examples include running log collectors like Fluentd or node monitoring tools that gather metrics from each server. The main advantage of a DaemonSet is that it guarantees consistent background services across all nodes in the cluster without manually managing replicas.
+

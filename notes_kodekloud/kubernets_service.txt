@@ -71,3 +71,14 @@ Kubernetes SIGs: What They Are and How They Work | KodeKloud: https://www.youtub
 
 
 What are Kubernetes Enhancement Proposals (KEPs)? | Kubernetes | KodeKloud: https://www.youtube.com/watch?v=B810TDzTQsQ 
+
+
+
+
+
+There are three types of design pattern for multicontainer pods
+    co-located containers : not provides the ability to specify the order of startup
+    regular init containers 
+    sidebar containers : provides the ability to specify the order of startup
+
+

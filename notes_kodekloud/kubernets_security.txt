@@ -1,0 +1,501 @@
+we have 4 types of entity for which we need Security
+1. admin
+2. Developers
+3. end user
+4. service account(bot)
+
+the access for end user is managerd by internal app itself so we do need to do anything for that
+
+kubernets does not manage user account natively, it relies on an external source like a file with user detail, or certificate or a third party idendity service like LDAP to manage these users 
+
+kubernets can create and manage service accounts using kubernets api 
+
+in kubernets all the access is managed by the api server, whether you are accessing the cluster through kubectl tool or the api directly, all of those req go through the kube api server, the kubee api server authenticates the req before processing 
+
+there are different authentication mechnism that can be configured, we can have a list of usernames and passwords in a static password file, or usernames and tokens in a static token file or we can authenticate using certificates, and another option is to connect third party authentication protocols like ldap,kerberos etc...
+
+symmetric encryption: encryptt & decrypt with same key and key need to exchange between sender and receiver 
+
+asymmetric encryption: pair of key, privatee and public 
+    we will take as private key and public lock 
+
+    run the command: ssh-keygen, it will generate two types of keys private and public
+
+    Jo data Public Key se lock (encrypt) hua hai, wo sirf uski matching Private Key se hi unlock (decrypt) ho sakta hai.
+
+
+SSH (Secure Shell): Ye ek Rasta (Tunnel) hai ek computer se dusre computer tak surakshit pahunchne ke liye.
+OpenSSL: Ye ek Toolkit/Factory hai jo encryption ke "auzaar" (tools) banati hai.
+
+
+Asymmetric Encryption ek Technique hai (Jaise maths ka ek formula). Is formula ko do alag-alag log alag-alag tarike se use karte hain:
+
+    SSH: Is formula ko use karta hai Server Login ke liye.
+    SSL/TLS: Is formula ko use karta hai Websites (HTTPS) ke liye.
+
+
+certifactes authorities: symantac, digicert, komodo, globalsign etc...
+
+============================================================
+       SSH ASYMMETRIC ENCRYPTION & KEYGEN - HINGLISH NOTES
+============================================================
+
+1. ASYMMETRIC ENCRYPTION KA CONCEPT
+-----------------------------------
+* Ismein 2 chabiyan hoti hain: 
+  - Public Key (Lock): Ise duniya ko dikha sakte ho (Server pe rehti hai).
+  - Private Key (Chabi): Ise kisi ko nahi dikhana (Aapke laptop pe rehti hai).
+* RULE: Jo data Public Key se lock hoga, wo SIRF uski matching Private Key se khulega.
+
+2. SSH "CHALLENGE-RESPONSE" LOGIC (Parde ke Peeche)
+--------------------------------------------------
+Jab aap login karte ho, password nahi bheja jata. Ye hota hai:
+1. SERVER ek random "Secret Message" generate karta hai.
+2. SERVER us message ko aapki PUBLIC KEY se lock karke aapko bhejta hai.
+3. AAPKA LAPTOP apni PRIVATE KEY se us lock ko kholta hai (decrypt karta hai).
+4. AAPKA LAPTOP wapas server ko "Proof" bhejta hai ki "Maine lock khol liya!".
+5. SERVER samajh jata hai ki aapke paas asli chabi hai. Access Granted!
+
+3. PRACTICAL COMMANDS (Workflow)
+--------------------------------
+STEP 1: Apne Laptop par Keys banana
+$ ssh-keygen -t rsa -b 4096
+(Isse 'id_rsa' [Private] aur 'id_rsa.pub' [Public] files banengi)
+
+STEP 2: Public Key ko Server par bhejna (Sirf ek baar)
+$ ssh-copy-id username@server_ip
+(Ye aapka 'Lock' server ke 'authorized_keys' file mein daal deta hai)
+
+STEP 3: Login karna (Magic!)
+$ ssh username@server_ip
+(Ab koi password nahi maangega kyunki mathematical verification ho raha hai)
+
+4. GOLDEN RULES
+---------------
+* Private Key (id_rsa) = Kabhi kisi ko mat do, ye aapka asli password hai.
+* Public Key (id_rsa.pub) = Ise GitHub, AWS, ya kisi bhi server pe bindas dalo.
+* Passphrase = ssh-keygen ke waqt ek extra password dalo taaki agar laptop chori ho jaye, toh bhi chabi koi use na kar sake.
+
+============================================================
+
+
+
+============================================================
+       SERVER-SIDE SSH ACCESS MANAGEMENT (HOW-TO)
+============================================================
+
+1. CORE CONCEPT
+---------------
+* The server acts as a gatekeeper. 
+* It maintains a "White-list" of allowed Public Keys.
+* This list is stored in a specific file: ~/.ssh/authorized_keys
+
+2. ADDING A NEW USER (Granting Access)
+--------------------------------------
+Step A: Ask the user for their PUBLIC KEY (id_rsa.pub). 
+        NEVER ask for their Private Key.
+
+Step B: Log into your server and open the authorized_keys file:
+        $ nano ~/.ssh/authorized_keys
+
+Step C: Paste the user's public key (the long string starting 
+        with 'ssh-rsa' or 'ssh-ed25519') on a NEW LINE at the 
+        bottom of the file.
+
+Step D: Save and Exit (Ctrl+O, Enter, Ctrl+X).
+
+3. SECURITY & PERMISSIONS (Crucial)
+-----------------------------------
+SSH will reject the connection if file permissions are too open. 
+Run these commands on the server:
+* Set folder permissions:   $ chmod 700 ~/.ssh
+* Set file permissions:     $ chmod 600 ~/.ssh/authorized_keys
+
+4. REMOVING A USER (Revoking Access)
+------------------------------------
+1. Open the ~/.ssh/authorized_keys file on the server.
+2. Locate the specific line containing that user's public key.
+3. Delete that line entirely.
+4. Save the file.
+Result: The user is immediately blocked from logging in.
+
+5. THE "ULTIMATE" SECURITY MOVE
+-------------------------------
+To make the server 100% immune to password-guessing (Brute Force), 
+you can disable password logins entirely in /etc/ssh/sshd_config 
+by setting:
+    PasswordAuthentication no
+
+============================================================
+
+
+
+
+
+============================================================
+       CONFUSION CLEARANCE: SSH vs SSL CERTIFICATES
+============================================================
+
+1. THE BASE (Asymmetric Encryption)
+   - Both use Public Key (Lock) and Private Key (Key).
+   - This is just the "Maths" behind the security.
+
+2. SSH (The Private Tunnel)
+   - Goal: Remote Login.
+   - Trust: Manual. You put your key on the server yourself.
+   - Needs: Just a Public Key. No ID card (Certificate) required.
+
+3. SSL/TLS (The Public Website)
+   - Goal: Safe Browsing (HTTPS).
+   - Trust: Automatic. A Third Party (CA) verifies the site.
+   - Needs: A Certificate (Public Key + Proof of Identity).
+
+4. WHY OPENSSL?
+   - OpenSSL is the "Swiss Army Knife". 
+   - It can create Keys for SSH.
+   - It can create Certificates for Websites.
+   - Don't confuse the TOOL with the PURPOSE.
+
+SUMMARY:
+- Use SSH Keys to talk to your own server.
+- Use SSL Certificates so the world can talk to your website safely.
+============================================================
+
+
+
+
+
+============================================================
+      HOW CA KEYS & BROWSER VERIFICATION WORK
+============================================================
+
+1. THE CA'S ROLE (SIGNING):
+   - CA takes Website's Info + Website's Public Key.
+   - CA locks (signs) this info using CA's PRIVATE KEY.
+   - This "Digital Signature" is attached to the Certificate.
+
+2. THE BROWSER'S ROLE (VERIFYING):
+   - Browser receives the Certificate from the Website.
+   - Browser fetches the CA's PUBLIC KEY (from its Root Store).
+   - Browser uses CA's Public Key to unlock the Signature.
+   - SUCCESS? If it unlocks, the CA is verified.
+
+3. THE CHAIN PRINCIPLE:
+   - Root CA Private Key signs Intermediate CA Public Key.
+   - Intermediate CA Private Key signs Website Public Key.
+   - Everything leads back to the Root CA Public Key in your OS.
+
+4. WHY IS IT SECURE?
+   - No one can fake a signature because nobody has the 
+     CA's PRIVATE KEY (it's kept in a super-secure vault).
+============================================================
+
+
+
+
+certifactes(public key) *.crt *.pem => server.crt, server.pem , client.crt, client.pem 
+private key  *.key *-key.pem => server.key, server-key.pem, client.key, client-key.pem 
+    usually word key for private key 
+
+
+
+Kubernetes cluster banane se pehle hum ek Certificate Authority (CA) banate hain. Ye cluster ka sabse important part hai.
+
+Files: ca.key (Secret) aur ca.crt (Public).
+
+Role: Cluster ke andar jitne bhi components hain (API Server, Scheduler, Kubelet, etc.), un sabke certificates isi ca.key se sign hone chahiye. 
+
+
+Server certificates for servers:
+    kube-apiserver = apiserver.crt and apiserver.key 
+    etcd-server = etcd-x-server.crt and etcd-x-server.key 
+    kubelet server = kubelet.crt and kubelet.key 
+
+client certificates for clients:
+    The client who access the kube api server are us the admins through kubectl or REST API 
+
+    the admin user requires a certificate and key pair to authenticate to the kube api server, like admin.crt and admin.key 
+
+    the kube scheduler talks to the kube api server to look for pods that require scheduling and then gets the api server to schedule the pods on the right nworker node, for that it requires scheduler.crt and scheduler.key 
+
+    the kube controller manager talks to api server in that controller-manager.crt and controller-manager.key . Ye wo Manager hai jo kabhi sota nahi hai. Iska kaam hai "Desired State" ko maintain karna
+
+    the kube proxy talks to api server in that kube-proxy.crt and kube-proxy.key . Network Rules manage karna. Kubernetes mein Pods aate-jaate rehte hain, unka IP badalta rehta hai. Lekin Service ka IP fix hota hai.
+
+
+    the servers communicates amongst them as well, for example api server communicates with the ETCD server, kube api server is the only server talks to ETCD server, so for ETCD server, the kube api server is a client. Kubernetes mein jo kuch bhi hota hai (Pods, Services, Secrets), sab ka data yahin store hota hai. Ye ek Key-Value Store (Database) hai.
+
+    admin
+    scheduler
+    controller-manager 
+    kube proxy 
+    apiserver-kubelet-client
+    apiservver-etcd-client 
+    kubelet-client 
+
+
+
+
+
+
+
+Bhai, ab hum **Data Flow** ko pakadte hain. "Feel" tab aayegi jab tum visualize karoge ki request kahan se nikli aur kahan gayi.
+
+Kubernetes mein **API Server** sabka "Heart" hai. Sab log usi se baat karte hain, aur wo baakiyon se baat karta hai.
+
+Is "Baat-cheet" (Communication) ko hum 3 scenarios mein todte hain. Har scenario mein dekho ki **Certificate** aur **Key** ka kya role hai.
+
+---
+
+### Scenario 1: Admin (Tum) vs API Server
+
+**Situation:** Tum apne laptop se `kubectl get pods` command chalate ho.
+
+1. **Who initiates?** Tum (User/Client).
+2. **To whom?** Kube-API Server.
+3. **Why?** Pods ki list dekhne ke liye.
+
+**Process & Certificates Scheme:**
+
+* **Step 1 (Server Identity):** Tumhari request API Server pe gayi. API Server ne apna **Server Certificate** (`apiserver.crt`) dikhaya.
+* *Tumhara laptop check karta hai:* "Kya ye certificate `ca.crt` (Root CA) ne sign kiya hai?"
+* *Trust:* Agar haan, to tumhara laptop trust karta hai ki ye *asli* API Server hai.
+
+
+* **Step 2 (Client Identity):** Ab API Server poochta hai: "Tu kaun hai?"
+* Tumhara laptop `kubectl` config se tumhara **Client Certificate** (`admin.crt`) aur **Private Key** bhejta hai (Sign karke).
+* *API Server check karta hai:* Certificate ke andar **CN (Common Name)** field padhta hai -> `CN=kubernetes-admin`.
+* *Result:* API Server samajh gaya ki tum Admin ho. Access Granted.
+
+
+
+> **Rule:** Yahan API Server = **Server** (Server Cert chahiye), Tum = **Client** (Client Cert chahiye).
+
+---
+
+### Scenario 2: Scheduler vs API Server
+
+**Situation:** Ek naya Pod create hua hai, lekin uske paas Node nahi hai. Scheduler ko ye pata karna hai aur use Node assign karna hai.
+
+1. **Who initiates?** Kube-Scheduler (Client).
+2. **To whom?** Kube-API Server.
+3. **Why?** Pending pods dhoondhne ke liye.
+
+**Process & Certificates Scheme:**
+
+* Scheduler ek alag process hai (program). Jab ye start hota hai, ye API Server ko call karta hai.
+* **Client Side (Scheduler):** Iske paas `scheduler.crt` hota hai. Is certificate ke andar `CN=system:kube-scheduler` likha hota hai.
+* **Server Side (API Server):** Ye verify karta hai ki "Haan, ye request Scheduler se aayi hai" kyunki certificate CA ne sign kiya hai aur CN match ho raha hai.
+
+> **Key Point:** Agar Scheduler ke paas `controller-manager.crt` galti se aa gaya, to API Server use "Scheduler" nahi maanega, use "Controller Manager" maanega. Identity completely **Certificate** pe depend karti hai.
+
+---
+
+### Scenario 3: API Server vs ETCD (Sabse Important)
+
+**Situation:** Tumne Pod create kiya. API Server ko ye data **ETCD** (Database) mein save karna hai.
+
+1. **Who initiates?** Kube-API Server.
+2. **To whom?** ETCD Server.
+3. **Why?** Data write karne ke liye.
+
+**Ye ulta case hai! Dhyan dena:**
+Yahan **API Server** ek **Client** ban jata hai, aur **ETCD** ek **Server** ban jata hai.
+
+**Process & Certificates Scheme:**
+
+* **ETCD (Server):** ETCD ke paas apna `etcd-server.crt` hota hai taaki wo proof kar sake ki wo asli Database hai.
+* **API Server (Client):** API Server ko ETCD se baat karne ke liye ek alag certificate chahiye hota hai, jise hum **API-Etcd-Client-Cert** kehte hain.
+* Is certificate ki permission hoti hai database mein read/write karne ki.
+
+
+* **Authentication:** ETCD check karta hai ki kya request karne wale (API Server) ke paas valid certificate hai jo Root CA ne sign kiya hai?
+
+---
+
+### Scenario 4: API Server vs Kubelet
+
+**Situation:** Tum `kubectl logs my-pod` chalate ho.
+
+1. **Who initiates?** API Server (Tumhare behalf pe).
+2. **To whom?** Kubelet (Worker Node pe).
+3. **Why?** Logs fetch karne ke liye.
+
+**Process:**
+
+* Yahan **Kubelet** ek Server hai (Port 10250 pe sunta hai). Uske paas `kubelet.crt` hona chahiye.
+* **API Server** client ban kar request bhejta hai.
+
+---
+
+### Summary Table: Kon kya role play karta hai?
+
+Is table ko dhyan se dekho, "Feel" yahin hai:
+
+| Communication Flow | Initiator (Client Cert chahiye) | Receiver (Server Cert chahiye) |
+| --- | --- | --- |
+| **User -> Cluster** | Admin User (`admin.crt`) | API Server (`apiserver.crt`) |
+| **Scheduler -> Cluster** | Scheduler (`scheduler.crt`) | API Server (`apiserver.crt`) |
+| **Cluster -> Database** | API Server (`apiserver-etcd-client.crt`) | ETCD (`etcd.crt`) |
+| **Cluster -> Node** | API Server (`apiserver.crt`) | Kubelet (`kubelet.crt`) |
+
+### Technical Conclusion (The Scheme)
+
+1. **TLS Handshake:** Jab bhi do log baat karte hain, Receiver apna **Server Cert** dikhata hai encryption start karne ke liye.
+2. **mTLS (Mutual TLS):** Kubernetes mein sirf encryption nahi, **Authentication** bhi chahiye. Isliye Sender ko bhi apna **Client Cert** dikhana padta hai.
+3. **The Files:**
+* Jisko *Service* deni hai (API Server, ETCD, Kubelet) -> Uske paas `.crt` (Server) aur `.key` honi chahiye.
+* Jisko *Request* karni hai (Admin, Scheduler, Proxy) -> Uske paas `.crt` (Client) aur `.key` honi chahiye.
+
+
+
+Ab bata bhai, kya picture clear hui ki traffic kaise flow ho raha hai aur kyu har point pe certificate maanga ja raha hai?
+
+
+
+
+
+
+
+
+
+To generate certificate for cluster: 
+
+    1. ca.key : Ye sabse pehla step hai. Ye wo Secret Chabi hai jo baad mein certificates sign karegi. Isko kabhi kisi ke saath share nahi karte.
+
+    openssl genrsa -out ca.key 2048
+    Result: Ek encrypted file banegi jisme tumhari secret key hogi.
+
+
+    2. ca.csr (Certificate Signing Request)
+    Ye tumhara Application Form hai. Isme tum batate ho ki tum kaun ho (Subject). Kyunki ye Root CA hai, hum ise baad mein khud hi sign karenge.
+
+    openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+
+    Result: Ek request file banegi jo abhi "Kaccha Certificate" hai.
+
+
+    3. ca.crt : Ye final ID Card hai. Kyunki ye CA (Boss) hai, ye kisi aur ke paas sign hone nahi jayega. Ye Self-Signed hota hai (Apni key se khud ko verify karna).
+
+    openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt -days 1000
+
+    Result: ca.crt file ban gayi. Ye Public file hai jo pure Kubernetes cluster (Nodes, Servers) mein baati jayegi trust ke liye.
+
+
+
+kubeconfig file 
+
+apiVersion: v1
+kind: Config
+preferences: {}
+
+# --- 1. CLUSTERS (Destination: Kahan jana hai?) ---
+clusters:
+- name: google-dev-cluster
+  cluster:
+    server: https://35.1.1.1:6443
+    certificate-authority: /etc/k8s/google-ca.crt
+- name: google-prod-cluster
+  cluster:
+    server: https://35.2.2.2:6443
+    certificate-authority: /etc/k8s/google-ca.crt
+- name: ms-project-cluster
+  cluster:
+    server: https://20.1.1.1:6443
+    certificate-authority: /etc/k8s/ms-ca.crt
+
+# --- 2. USERS (Identity: Tum kaun ho?) ---
+users:
+- name: raju-google-id
+  user:
+    client-certificate: /home/raju/.kube/certs/google-raju.crt
+    client-key: /home/raju/.kube/certs/google-raju.key
+- name: raju-ms-token
+  user:
+    token: "ms-secret-token-12345"
+
+# --- 3. CONTEXTS (The Mapping: Kis ID se kis Cluster pe jana hai?) ---
+contexts:
+- name: work-google-dev
+  context:
+    cluster: google-dev-cluster
+    user: raju-google-id
+    namespace: frontend-dev    # Direct 'frontend' namespace mein land karoge
+- name: work-google-prod
+  context:
+    cluster: google-prod-cluster
+    user: raju-google-id
+- name: freelance-ms-project
+  context:
+    cluster: ms-project-cluster
+    user: raju-ms-token
+
+# --- 4. ACTIVE SELECTION ---
+current-context: work-google-dev
+
+
+
+
+
+
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: production
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://controlplane:6443
+
+- name: development
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://controlplane:6443
+
+- name: kubernetes-on-aws
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://controlplane:6443
+
+- name: test-cluster-1
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://controlplane:6443
+
+contexts:
+- name: test-user@development
+  context:
+    cluster: development
+    user: test-user
+
+- name: aws-user@kubernetes-on-aws
+  context:
+    cluster: kubernetes-on-aws
+    user: aws-user
+
+- name: test-user@production
+  context:
+    cluster: production
+    user: test-user
+
+- name: research
+  context:
+    cluster: test-cluster-1
+    user: dev-user
+
+users:
+- name: test-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/test-user/test-user.crt
+    client-key: /etc/kubernetes/pki/users/test-user/test-user.key
+- name: dev-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/dev-user/developer-user.crt
+    client-key: /etc/kubernetes/pki/users/dev-user/dev-user.key
+- name: aws-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/aws-user/aws-user.crt
+    client-key: /etc/kubernetes/pki/users/aws-user/aws-user.key
+
+current-context: test-user@development
+preferences: {}

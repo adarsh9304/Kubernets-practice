@@ -1,0 +1,277 @@
+KUBERNETES SERVICE ACCOUNT TOKEN MOUNTING – SIMPLE CONCEPTUAL NOTES
+
+1. What is a ServiceAccount
+   A ServiceAccount is an identity used by a Pod to communicate with the Kubernetes API.
+   When a Pod wants to perform actions such as reading pods, creating resources, or accessing cluster information, it uses the ServiceAccount token as authentication.
+
+Simple idea:
+Pod → uses ServiceAccount → to talk to Kubernetes API
+
+2. Default Behavior of ServiceAccount Token Mounting
+   By default, when a Pod starts, Kubernetes automatically mounts the ServiceAccount credentials inside the container.
+
+Default path inside the container:
+/var/run/secrets/kubernetes.io/serviceaccount/
+
+Common files in that directory:
+
+* token        → authentication token
+* ca.crt       → cluster certificate
+* namespace    → namespace where pod is running
+
+Flow:
+Pod starts
+↓
+Kubernetes attaches ServiceAccount
+↓
+Token automatically mounted inside container
+
+3. Security Issue with Automatic Token Mounting
+   Automatic token mounting means every pod that uses a ServiceAccount receives API credentials.
+
+Potential problem:
+Some pods may not need access to the Kubernetes API but still receive credentials.
+
+Security best practice:
+Only mount tokens in pods that actually need them.
+
+4. Disabling Automatic Token Mounting
+   To disable automatic token mounting, modify the ServiceAccount configuration.
+
+Example:
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+name: dashboard-sa
+automountServiceAccountToken: false
+
+Effect:
+Pods using this ServiceAccount will NOT automatically receive the API token.
+
+5. Manually Mounting the ServiceAccount Token
+   When automatic mounting is disabled, we can manually mount the token using a projected volume.
+
+A projected volume allows Kubernetes to inject specific data (like tokens) into a container.
+
+Deployment Example Concept:
+
+Deployment
+↓
+Pod Template
+↓
+Volume injects ServiceAccount token
+↓
+Container receives token at desired location
+
+6. Projected Volume for ServiceAccount Token
+
+Example concept configuration:
+
+volumes:
+
+* name: token
+  projected:
+  sources:
+
+  * serviceAccountToken:
+    path: token
+
+This creates a token file inside the mounted volume.
+
+7. Mounting the Volume Inside the Container
+
+Example concept:
+
+volumeMounts:
+
+* name: token
+  mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+  readOnly: true
+
+This means:
+The ServiceAccount token will appear as
+
+/var/run/secrets/kubernetes.io/serviceaccount/token
+
+8. Why ReadOnly Mount is Important
+   ServiceAccount tokens should not be modified by containers.
+
+Therefore the volume should be mounted as readOnly for security.
+
+9. Verifying That the Token is Mounted
+
+Command used:
+
+kubectl exec POD_NAME -- ls /var/run/secrets/kubernetes.io/serviceaccount/
+
+Purpose:
+Run a command inside the container and list files in the ServiceAccount directory.
+
+Expected output:
+
+token
+
+or sometimes:
+
+token
+namespace
+ca.crt
+
+If the token file exists, the ServiceAccount token is successfully mounted.
+
+10. Conceptual Flow Summary
+
+ServiceAccount
+↓
+Automatic token mounting disabled
+↓
+Deployment manually mounts token
+↓
+Pod starts
+↓
+Token appears inside container
+↓
+Pod can authenticate with Kubernetes API
+
+11. Key Concept to Remember
+
+Default behavior:
+Kubernetes automatically mounts ServiceAccount tokens.
+
+Secure approach:
+Disable automatic mounting and explicitly mount tokens only where needed.
+
+12. Core Kubernetes Relationship
+
+ServiceAccount → identity for pods
+Deployment → creates and manages pods
+Pod → runs containers
+Token → allows pod to authenticate with Kubernetes API
+
+
+
+
+
+
+======================================================================
+KUBERNETES IMAGE SECURITY & PRIVATE REGISTRY ACCESS - CHEAT SHEET
+======================================================================
+
+1. CONCEPT OF IMAGE SECURITY (The "Supply Chain" Approach)
+----------------------------------------------------------
+Security in K8s starts before the image even reaches the cluster.
+
+* Trusted Registries: Avoid using unverified public images. Use Private 
+  Registries like AWS ECR, Google Artifact Registry (GAR), or Harbor.
+* Vulnerability Scanning: Use tools like 'Trivy', 'Snyk', or 'Clair' 
+  to scan image layers for CVEs (Common Vulnerabilities and Exposures).
+* Image Signing (Provenance): Use 'Cosign' (Sigstore) to digitally 
+  sign images. This ensures the image hasn't been tampered with.
+* Distroless/Minimal Images: Use "Distroless" or "Alpine" base images 
+  to reduce the attack surface by removing unnecessary shells/tools.
+
+2. ACCESSING PRIVATE REPOSITORIES (The "Secret" Method)
+-------------------------------------------------------
+Kubernetes cannot pull images from private repos without authentication.
+
+* ImagePullSecrets: A K8s object that stores your registry credentials.
+* Creation Command:
+  kubectl create secret docker-registry <secret-name> \
+    --docker-server=<registry-url> \
+    --docker-username=<user> \
+    --docker-password=<pass>
+
+* Usage in YAML (Pod/Deployment):
+  spec:
+    containers:
+    - name: my-app
+      image: private-repo/my-image:v1
+    imagePullSecrets:
+    - name: <secret-name>
+
+3. CLOUD-NATIVE AUTHENTICATION (IAM Roles)
+------------------------------------------
+For high-security production environments (AWS/GCP), avoid static 
+passwords. Use Identity-based access.
+
+* AWS (EKS): Uses IRSA (IAM Roles for Service Accounts).
+  - An IAM Role is created with ECR 'Pull' permissions.
+  - The K8s ServiceAccount is annotated with the IAM Role ARN.
+  - No manual secrets required; AWS handles token rotation.
+
+* GCP (GKE): Uses Workload Identity.
+  - Binds a Google Service Account (GSA) to a K8s Service Account (KSA).
+  - The Pod inherits the permissions of the GSA to pull from Artifact Registry.
+
+4. TROUBLESHOOTING TIPS
+-----------------------
+* Error: 'ImagePullBackOff' or 'ErrImagePull'
+* Debugging Command: kubectl describe pod <pod-name>
+* Check "Events" at the bottom to see if it's a "401 Unauthorized" 
+  (Secret issue) or "404 Not Found" (Typo in image name).
+
+5. BEST PRACTICES SUMMARY
+-------------------------
+- Never run containers as 'root' (Use SecurityContext).
+- Set 'readOnlyRootFilesystem: true' in your YAML.
+- Use 'Multi-stage builds' to keep the final image size small.
+- Always tag images with specific versions (v1.2.3) instead of 'latest'.
+
+======================================================================
+
+
+
+
+
+======================================================
+DOCKER & KUBERNETES SECURITY CONTEXT - QUICK NOTES
+======================================================
+
+1. WHAT IS A SECURITY CONTEXT?
+------------------------------------------------------
+* Definition: It is a set of rules that defines privilege and access control for a Pod or Container.
+* Analogy: Think of it as a "Rent Agreement" for a container. It tells the container exactly what it CAN and CANNOT do inside the host machine.
+
+2. WHY DO WE NEED IT?
+------------------------------------------------------
+* The Problem: By default, Docker containers run as 'root' (Admin). If a hacker hacks your app, they get 'root' access and can destroy the entire host server.
+* The Solution: Security Context enforces the "Principle of Least Privilege". It forces the container to run as a normal, powerless user.
+
+3. KEY PARAMETERS (THE CHEAT SHEET)
+------------------------------------------------------
+If you are writing a Kubernetes YAML file, these are the most important settings under 'securityContext':
+
+* runAsUser: 1000
+  (Forces the container to run as a normal user, not root user '0').
+
+* privileged: false
+  (Prevents the container from getting direct access to the Host OS hardware. NEVER set this to true in production).
+
+* readOnlyRootFilesystem: true
+  (Locks the container's file system. Even if a hacker gets in, they cannot download or save malware/scripts).
+
+* allowPrivilegeEscalation: false
+  (Stops a child process inside the container from gaining more powers than its parent. Stops hackers from trying to become root).
+
+* capabilities: drop: ["ALL"]
+  (Strips away default Linux admin powers like changing file ownership, changing network IPs, etc.).
+
+4. HOW AN ADMIN ENFORCES THIS (REAL-LIFE WORKFLOW)
+------------------------------------------------------
+* The Admin DOES NOT write YAML files for 50 developers. 
+* Instead, the Admin sets a "Policy" on the K8s Namespace using Pod Security Admission (PSA).
+* Example Label: 'pod-security.kubernetes.io/enforce: restricted'
+* Result: If a developer tries to deploy a pod without a proper Security Context, the Kubernetes API Server will automatically REJECT the deployment.
+
+5. HOW ADMIN MANAGES TEAM ACCESS (ONBOARDING & OFFBOARDING)
+------------------------------------------------------
+* Granting Access (Onboarding): 
+  Admins never give direct 'root' or manual certificates to developers. They integrate K8s with the company's SSO (Okta, Azure AD). Access is given using K8s RBAC (Role-Based Access Control) tied to the user's corporate email.
+  
+* Revoking Access (Offboarding): 
+  When an employee leaves, the Admin simply disables their corporate email in the SSO portal (Okta/Azure AD). Since K8s validates tokens with the SSO, the ex-employee's Kubernetes access is automatically blocked.
+
+======================================================
+END OF NOTES
+======================================================

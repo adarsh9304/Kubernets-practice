@@ -1,0 +1,339 @@
+============================================================
+KUBERNETES AUTHORIZATION: DETAILED OVERVIEW
+============================================================
+
+Definition:
+Authorization is the process that determines whether a user 
+or service account has permission to perform a specific 
+action (verb) on a specific resource within the cluster. 
+It happens AFTER Authentication (who are you?) is successful.
+
+------------------------------------------------------------
+1. RBAC (Role-Based Access Control) - [MOST COMMON]
+------------------------------------------------------------
+Description: 
+RBAC regulates access based on the roles of individual users 
+within an enterprise. It is the standard and recommended 
+method for most K8s environments.
+
+Key Components:
+- Roles: Define permissions within a specific Namespace.
+- ClusterRoles: Define permissions for the entire Cluster.
+- RoleBindings: Link a User/Group to a Role (Namespace level).
+- ClusterRoleBindings: Link a User/Group to a ClusterRole 
+  (Cluster level).
+
+Best For: Granular control and multi-tenant environments.
+
+------------------------------------------------------------
+2. ABAC (Attribute-Based Access Control)
+------------------------------------------------------------
+Description: 
+Access is granted based on attributes rather than just roles. 
+Attributes can be the user, the resource, or the request type.
+
+Mechanism:
+It uses a local JSON policy file on the Master Node. 
+Example: "User 'Alice' can 'read' 'Pods' only in 'Namespace-A'."
+
+Pros/Cons:
+- Pro: Very powerful and specific.
+- Con: Hard to manage. Any change requires a restart of 
+  the Kube-API-Server.
+
+------------------------------------------------------------
+3. NODE AUTHORIZATION
+------------------------------------------------------------
+Description: 
+A special-purpose authorization mode that specifically 
+authorizes API requests made by Kubelets.
+
+Purpose:
+It ensures that a Node (Kubelet) can only access resources 
+(like Secrets, ConfigMaps, Pods) that are specifically 
+scheduled to run on THAT particular node. This limits the 
+"blast radius" if a node is compromised.
+
+------------------------------------------------------------
+4. WEBHOOK AUTHORIZATION
+------------------------------------------------------------
+Description: 
+In this mode, Kubernetes doesn't decide the permission itself. 
+Instead, it sends a REST request (a Webhook) to an external 
+service to ask if the action is allowed.
+
+Use Case:
+Used when you want to integrate K8s with a 3rd party 
+permission system or a custom enterprise authorization engine.
+
+------------------------------------------------------------
+5. ALWAYS ALLOW / ALWAYS DENY
+------------------------------------------------------------
+- AlwaysAllow: Skips authorization. Every request is allowed. 
+  (Dangerous! Only used for testing).
+- AlwaysDeny: Blocks every request. (Used for testing 
+  security workflows).
+
+------------------------------------------------------------
+AUTHORIZATION CHAINING (How it works)
+------------------------------------------------------------
+Kubernetes checks these modules in a sequence (Order matters).
+1. If any module ALLOWS the request, the user gets access.
+2. If a module doesn't have an opinion, it passes it to the next.
+3. If all modules finish and no one said "Allow", the 
+   request is DENIED (Deny by default).
+
+============================================================
+Generated for: K8s Learning Session
+============================================================
+
+
+
+
+
+
+
+
+============================================================
+KUBERNETES RBAC (ROLE-BASED ACCESS CONTROL) - FULL GUIDE
+============================================================
+
+1. INTRODUCTION
+---------------
+RBAC is the method of regulating access to computer or 
+network resources based on the roles of individual users 
+within an enterprise. In K8s, it answers: 
+"Who (Subject) can do What (Verb) to Which (Resource)?"
+
+2. THE THREE PILLARS
+--------------------
+A. SUBJECTS (The "Who"):
+   - User Accounts: Real people (e.g., admin@company.com).
+   - Service Accounts: Applications/Pods running in K8s.
+   - Groups: Collection of users (e.g., system:masters).
+
+B. VERBS (The "Action"):
+   - Read: get, list, watch
+   - Write: create, update, patch, delete
+
+C. RESOURCES (The "Target"):
+   - Pods, Services, Nodes, ConfigMaps, Secrets, etc.
+
+3. THE FOUR CORE RBAC OBJECTS
+------------------------------
+
+A. ROLE (Namespace Level)
+   - Scope: Limited to ONE specific namespace.
+   - Use Case: Granting developer access to 'Project-A'.
+   - Rule: Defines "What can be done" inside that namespace.
+
+B. CLUSTERROLE (Cluster Level)
+   - Scope: Entire Cluster (All namespaces + Cluster resources).
+   - Use Case: Giving an admin power over the whole cluster 
+     or allowing a security tool to scan all nodes.
+
+C. ROLEBINDING (The Link - Namespace)
+   - Purpose: Connects a SUBJECT to a ROLE.
+   - Example: "Give 'User-Arjun' the 'Pod-Reader' Role in 
+     the 'Default' namespace."
+
+D. CLUSTERROLEBINDING (The Link - Cluster)
+   - Purpose: Connects a SUBJECT to a CLUSTERROLE globally.
+   - Example: "Give 'User-Admin' the 'Cluster-Admin' 
+     permissions everywhere."
+
+4. KEY CONCEPTS TO REMEMBER
+---------------------------
+- DENY BY DEFAULT: If no Role allows it, it's forbidden.
+- NO DENY RULES: RBAC only supports "Allow" rules. You 
+  cannot create a rule that says "Allow everything EXCEPT delete".
+- ADDITIVE PERMISSIONS: If a user has two roles, they get 
+  the SUM of all permissions from both roles.
+
+5. PRACTICAL YAML EXAMPLES
+--------------------------
+
+--- ROLE EXAMPLE ---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: dev-team
+  name: pod-manager
+rules:
+- apiGroups: [""]        # Core API group
+  resources: ["pods"]    # The target resource
+  verbs: ["get", "list", "create", "delete"]
+
+--- ROLEBINDING EXAMPLE ---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: bind-pod-manager
+  namespace: dev-team
+subjects:
+- kind: User
+  name: "arjun@example.com"
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: pod-manager      # Name of the Role created above
+  apiGroup: rbac.authorization.k8s.io
+
+6. TROUBLESHOOTING COMMANDS
+---------------------------
+- Check if I can do something: 
+  $ kubectl auth can-i create pods --as=arjun
+
+- Check permissions for a service account:
+  $ kubectl auth can-i list secrets --as=system:serviceaccount:default:myapp
+
+============================================================
+Generated for: K8s Deep Dive Learning
+============================================================
+
+
+
+
+
+
+
+
+
+KUBERNETES RBAC + KUBECONFIG QUICK NOTES
+
+Check authorization mode of kube-apiserver
+cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep authorization-mode
+ps -ef | grep kube-apiserver | grep authorization-mode
+
+Count roles in default namespace
+kubectl get roles -n default
+kubectl get roles -n default --no-headers | wc -l
+
+Count roles in all namespaces
+kubectl get roles -A --no-headers | wc -l
+
+View details of a role
+kubectl describe role <role-name> -n <namespace>
+
+View role in YAML format
+kubectl get role <role-name> -n <namespace> -o yaml
+
+Find which user/serviceaccount is assigned to a role
+kubectl get rolebindings -n <namespace>
+kubectl describe rolebinding <rolebinding-name> -n <namespace>
+
+Check kube-proxy role assignment
+kubectl describe clusterrolebinding system:node-proxier
+
+Find accounts that have access to a namespace
+kubectl get rolebindings -n <namespace>
+kubectl describe rolebinding -n <namespace>
+
+View kubeconfig file
+cat ~/.kube/config
+kubectl config view
+
+Check current context
+kubectl config current-context
+
+List all contexts
+kubectl config get-contexts
+
+Show cluster API server
+kubectl config view -o jsonpath='{.clusters[*].cluster.server}'
+
+Show users in kubeconfig
+kubectl config view -o jsonpath='{.users[*].name}'
+
+Create a role
+kubectl create role developer --verb=list,create,delete --resource=pods -n default
+
+Create rolebinding for a user
+kubectl create rolebinding dev-user-binding --role=developer --user=dev-user -n default
+
+Test permissions of a user
+kubectl auth can-i create pods --as=dev-user -n default
+kubectl auth can-i list pods --as=dev-user -n default
+kubectl auth can-i delete pods --as=dev-user -n default
+
+Find rolebindings using a role
+kubectl get rolebinding -A | grep <role-name>
+
+List clusterrolebindings
+kubectl get clusterrolebindings
+
+Describe clusterrolebinding
+kubectl describe clusterrolebinding <name>
+
+RBAC flow
+User → RoleBinding → Role → Permissions
+
+
+
+
+
+
+
+====================================================
+KUBERNETES SERVICE ACCOUNTS - CORE CONCEPTS
+====================================================
+
+1. DEFINITION
+-------------
+A Service Account (SA) provides an identity for processes that run in a Pod. 
+While User Accounts are for humans (administrators/developers), Service 
+Accounts are for applications (Pods) to authenticate with the Kubernetes 
+API Server.
+
+2. KEY CHARACTERISTICS
+----------------------
+- Namespaced: Every Service Account belongs to a specific Namespace.
+- Automatic Creation: Every namespace has a 'default' Service Account.
+- Token-Based: Kubernetes generates a JWT token for the SA and mounts it 
+  into the Pod at: /var/run/secrets/kubernetes.io/serviceaccount/
+
+3. SERVICE ACCOUNT VS. RBAC
+---------------------------
+Identity alone has no power. You must use RBAC to give it permissions:
+- Service Account: The "Who" (Identity).
+- Role/ClusterRole: The "What" (Permissions like get, list, watch).
+- RoleBinding: The "Link" (Connects the SA to a Role).
+
+4. IMPLEMENTATION WORKFLOW
+--------------------------
+Step 1: Create the Service Account
+   $ kubectl create serviceaccount my-app-sa
+
+Step 2: Create a Role (Defining permissions)
+   kind: Role
+   metadata:
+     name: pod-reader
+   rules:
+   - apiGroups: [""]
+     resources: ["pods"]
+     verbs: ["get", "list"]
+
+Step 3: Bind the Role to the Service Account
+   $ kubectl create rolebinding my-app-binding \
+     --role=pod-reader \
+     --serviceaccount=default:my-app-sa
+
+Step 4: Assign to Pod (In Pod YAML)
+   spec:
+     serviceAccountName: my-app-sa
+
+5. SECURITY BEST PRACTICES
+--------------------------
+- Least Privilege: Never use the 'default' SA for sensitive apps. Create 
+  dedicated SAs with minimal permissions.
+- Disable Automount: If a Pod doesn't need to talk to the API, disable 
+  token mounting to reduce attack surface:
+  spec:
+    automountServiceAccountToken: false
+
+6. USEFUL COMMANDS
+------------------
+- List SAs: kubectl get sa
+- Describe SA: kubectl describe sa <sa-name>
+- Create SA: kubectl create sa <sa-name>
+====================================================

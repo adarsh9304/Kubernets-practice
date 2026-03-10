@@ -1,0 +1,457 @@
+scaling in kubernets: 
+
+| Type                 | Kya scale hota hai | Example      |
+| -------------------- | ------------------ | ------------ |
+| Pod Scaling          | Pods               | app replicas |
+| Cluster Scaling      | Nodes              | servers      |
+| Proportional Scaling | System pods        | DNS, metrics |
+
+
+Jaise hi aap scale command dete hain, Deployment naye Pods create karne ka instruction deti hai. Lekin, Scheduler (jo dimaag hai K8s ka) har node ko check karta hai. Jab use dikhta hai ki kisi bhi node par naye pod ke liye jagah nahi hai, toh wo un pods ko Pending status mein daal deta hai.
+
+
+spec:
+  containers:
+  - name: my-app
+    image: nginx
+    resources:
+      requests:
+        memory: "64Mi"   # 64 MB reserve ho gaye
+        cpu: "250m"      # 0.25 CPU core reserve ho gaye
+      limits:
+        memory: "128Mi"  # 128 MB se upar jaate hi Pod crash ho jayega
+        cpu: "500m"      # 0.5 CPU core se upar jaate hi app slow ho jayegi
+
+
+requests: Kubernetes kya karta hai? Jab aap kehte ho cpu: "250m", toh Kubernetes building ke saare kamre check karta hai. Wo wahi kamra (Node) chunega jahan 250m CPU khali padi ho.
+
+limits: 
+    limits ka matlab hai: "Main koshish karunga ki zyada use karun, lekin isse upar kabhi nahi jaunga."
+
+    CPU Limit ("Throttling"): Agar aapne 500m limit rakhi hai aur aapka app heavy kaam kar raha hai, toh Kubernetes use 500m se upar power nahi dega. Aapka app slow ho jayega, lekin chalta rahega. (Jaise gaadi mein speed governor laga ho—aap kitna bhi accelerator dabao, 80kmph se upar nahi jayegi).
+
+    Memory (RAM) Limit ("OOMKill"): RAM ke saath Kubernetes thoda sakht hai. Agar aapne 128Mi limit rakhi aur aapka app 129Mi use karne ki koshish karta hai, toh Kubernetes use turant kill (band) kar dega. Isse kehte hain OOMKilled (Out Of Memory Killed). Phir wo use naye sire se restart karega.
+
+
+
+
+metrix collection- external 
+HPA defination -custom 
+metrics collection - custom 
+metrics collection- Resource 
+
+
+HPA: basically we are adjusting the number of application instances inside the workloads and workloads could be deployment or could be stateful set 
+
+Traditionally, HPA replied on two primary metrics to basically know whether you need morre instances of our application. CPU and Memory 
+
+
+
+
+================================================================================
+KUBERNETES HORIZONTAL POD AUTOSCALER (HPA) - ARCHITECTURAL OVERVIEW
+================================================================================
+
+1. OVERVIEW
+-----------
+The Horizontal Pod Autoscaler (HPA) automatically updates a workload resource 
+(Deployment or ReplicaSet), with the aim of automatically scaling the workload 
+to match demand. Scaling is "Horizontal," meaning more Pods are deployed rather 
+than increasing the resources (CPU/RAM) of existing Pods.
+
+2. ARCHITECTURAL COMPONENTS
+---------------------------
+
+A. HPA Resource Definition (The Object):
+   - This is the API resource defined by the user.
+   - It specifies the "Scale Target" (e.g., Deployment name).
+   - It defines the "Min" and "Max" replica constraints.
+   - It defines the "Scaling Policy" (Target Average Utilization or Value).
+
+B. The HPA Controller (The Brain):
+   - A control loop running inside the 'kube-controller-manager'.
+   - Default Sync Period: 15 seconds.
+   - It periodically queries the Metrics API to check the current utilization.
+   - It calculates the ratio between current and desired metrics to decide 
+     whether to scale up or down.
+
+C. Metrics API Aggregator Layer:
+   - Kubernetes uses an "API Aggregator" to provide a unified interface for 
+     different metric types.
+   - Resource Metrics API (metrics.k8s.io): For CPU and Memory.
+   - Custom Metrics API (custom.metrics.k8s.io): For application-specific data.
+   - External Metrics API (external.metrics.k8s.io): For non-K8s data (AWS/GCP).
+
+D. Metrics Collection & Adapters:
+   - Metrics Server: A cluster-wide aggregator of resource usage data. It 
+     collects data from Kubelets (cAdvisor).
+   - Adapters: Since HPA only speaks to the K8s API, "Adapters" (like the 
+     Prometheus Adapter) act as translators. They pull data from external 
+     TSDBs and present them in a K8s-compliant API format.
+
+3. UNDERSTANDING METRICS TYPES
+------------------------------
+
+A. Resource Metrics:
+   - Focus: Built-in CPU and Memory usage.
+   - Source: Collected by cAdvisor on the node, retrieved by Metrics Server.
+   - Use Case: Scaling based on basic compute exhaustion.
+
+B. Custom Metrics:
+   - Focus: Metrics originating from WITHIN the cluster objects (Pods/Nodes).
+   - Requirement: Requires a Custom Metrics Adapter (e.g., k8s-prometheus-adapter).
+   - Examples: 
+     * HTTP Requests Per Second (RPS) coming from an Ingress.
+     * Number of active 404 errors in an application.
+     * Average latency of an API endpoint.
+
+C. External Metrics:
+   - Focus: Metrics originating from OUTSIDE the cluster (Cloud Services).
+   - Purpose: To scale Pods based on the state of a service that has no direct 
+     mapping to any Kubernetes object.
+   - Examples:
+     * Length of an AWS SQS Queue or Azure Service Bus.
+     * Throughput of a Managed Database (RDS).
+     * Cloud Pub/Sub message backlog.
+
+4. THE SCALING ALGORITHM (THE MATH)
+-----------------------------------
+HPA uses the following formula to determine the number of replicas:
+
+DesiredReplicas = ceil[ CurrentReplicas * ( CurrentMetricValue / TargetMetricValue ) ]
+
+Note: If the ratio is close to 1.0 (within a default tolerance of 0.1), 
+HPA will skip the scaling action to prevent "flapping."
+
+5. STABILIZATION WINDOW (COOLDOWN)
+----------------------------------
+To prevent rapid fluctuations (thrashing), HPA uses a stabilization window:
+- Scale-Down: Default is 300 seconds (5 minutes). It waits to ensure the 
+  load has genuinely dropped before removing pods.
+- Scale-Up: Usually happens faster to ensure application availability.
+
+================================================================================
+Generated for Future Reference | K8s Documentation Notes
+================================================================================
+
+
+
+
+
+
+
+================================================================================
+KUBERNETES HPA: THE COMPLETE END-TO-END OPERATIONAL FLOW
+================================================================================
+
+
+How it works
+
+  Kubelet on each node collects resource usage metrics (CPU and Memory) from running containers and pods.
+
+  The Metrics Server scrapes these metrics from the kubelet.
+
+  Metrics Server aggregates the data and exposes it through the Metrics API:
+
+  metrics.k8s.io
+
+  The Horizontal Pod Autoscaler queries this Metrics API.
+
+  Based on the metrics (like CPU utilization), HPA decides whether to scale pods up or down.
+
+
+
+1. PHASE 1: DATA EMISSION & SCRAPING (The Source)
+-------------------------------------------------
+The process begins at the Pod level where resource usage is generated.
+- cAdvisor (Container Advisor): Built into the Kubelet on every node. It 
+  collects real-time CPU, Memory, and Network stats from the running containers.
+- Application Endpoints: For Custom Metrics, the application exposes a 
+  '/metrics' endpoint (e.g., in Prometheus format).
+
+2. PHASE 2: METRICS AGGREGATION (The Collection)
+------------------------------------------------
+Raw data must be aggregated so the HPA Controller can read it.
+- Metrics Server: It scrapes cAdvisor data from all Kubelets and stores it in-memory. 
+  It provides the 'metrics.k8s.io' API.
+- Custom Metrics Adapters: Tools like 'Prometheus Adapter' fetch data from 
+  Prometheus and translate it into a format Kubernetes understands via the 
+  'custom.metrics.k8s.io' or 'external.metrics.k8s.io' APIs.
+
+3. PHASE 3: THE OBSERVATION LOOP (The Query)
+--------------------------------------------
+The HPA Controller (part of kube-controller-manager) performs a continuous 
+check-up (Control Loop).
+- Default Sync Period: Every 15 seconds.
+- Action: The HPA Controller queries the Metrics API Aggregator. 
+- Goal: "Get the current average utilization of [Metric X] for all pods 
+  matching the Label Selector of [Deployment Y]."
+
+
+
+4. PHASE 4: THE ALGORITHM & DECISION (The Logic)
+------------------------------------------------
+Once data is retrieved, the HPA applies the Scaling Formula:
+- Formula: Desired Replicas = ceil[ Current Replicas * (Current Metric / Target Metric) ]
+- Tolerance Check: If the ratio is within 10% (default 0.1), no action is taken. 
+  This prevents "Thrashing" (unnecessary scaling for minor fluctuations).
+- Scaling Constraints: HPA ensures the new replica count stays within the 
+  'minReplicas' and 'maxReplicas' range defined in your YAML.
+
+5. PHASE 5: EXECUTION & RECONCILIATION (The Scaling)
+----------------------------------------------------
+If the calculation warrants a change:
+- Scale Sub-resource: HPA sends a PATCH request to the Scale sub-resource of 
+  the target (Deployment/StatefulSet).
+- Deployment Controller: It notices the "Desired Replicas" has changed and 
+  updates the ReplicaSet.
+- Scheduler: The Kube-Scheduler identifies the need for new Pods and assigns 
+  them to healthy Nodes based on resource availability.
+- Final State: New Pods are pulled, started, and begin handling traffic.
+
+6. PHASE 6: STABILIZATION (The Cooling)
+---------------------------------------
+To ensure system stability, HPA manages a "Stabilization Window":
+- Scale-Down: HPA looks back at the last 5 minutes (default). It only scales 
+  down if the load has stayed low for that entire duration. 
+- Purpose: To prevent the "Yo-Yo Effect" where pods are deleted only to be 
+  re-created seconds later when a tiny spike occurs.
+
+================================================================================
+Generated for Future Reference | K8s Systems Engineering Documentation
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+KUBERNETES METRICS SERVER – CONCEPT NOTES
+
+1. What is Metrics Server?
+   Metrics Server is a cluster-wide component in Kubernetes that collects CPU and Memory usage from nodes and pods.
+
+It gathers these metrics from the Kubelet running on each node and exposes them through the Kubernetes Metrics API.
+
+Metrics Server is mainly used for:
+
+* kubectl top command
+* Horizontal Pod Autoscaler (HPA)
+* Basic resource monitoring
+
+Without Metrics Server, Kubernetes cannot display CPU and Memory usage of pods and nodes.
+
+---
+
+2. Metrics Flow Architecture
+
+The metrics flow in Kubernetes works like this:
+
+Pods running on Nodes
+↓
+Kubelet collects resource metrics
+↓
+Metrics Server scrapes metrics from kubelet
+↓
+Metrics Server exposes metrics via Kubernetes API
+↓
+kubectl / HPA / Monitoring tools consume metrics
+
+Flow Diagram:
+
+Nodes (Kubelet Metrics)
+↓
+Metrics Server
+↓
+Metrics API (metrics.k8s.io)
+↓
+kubectl top / HPA
+
+---
+
+3. Location of Metrics Server
+
+Metrics Server runs inside the Kubernetes cluster as a Deployment.
+
+Namespace:
+kube-system
+
+Deployment Name:
+metrics-server
+
+Commands to check location:
+
+kubectl get deployment -n kube-system
+kubectl get pods -n kube-system | grep metrics-server
+
+---
+
+4. Metrics API
+
+Metrics Server exposes metrics through the API:
+
+/apis/metrics.k8s.io/v1beta1
+
+Example command:
+
+kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes"
+
+If metrics-server is working properly, it will return node metrics in JSON format.
+
+---
+
+5. Useful Commands
+
+Check metrics-server pods:
+
+kubectl get pods -n kube-system | grep metrics-server
+
+Check logs of metrics-server:
+
+kubectl logs -n kube-system deployment/metrics-server
+
+Check API service status:
+
+kubectl get apiservice v1beta1.metrics.k8s.io
+
+Describe API service:
+
+kubectl describe apiservice v1beta1.metrics.k8s.io
+
+---
+
+6. kubectl top Commands
+
+These commands depend on metrics-server.
+
+Check node resource usage:
+
+kubectl top nodes
+
+Check pod resource usage:
+
+kubectl top pods
+
+Example Output:
+
+NAME       CPU(cores)   MEMORY(bytes)
+node01     120m         500Mi
+node02     80m          400Mi
+
+---
+
+7. Common Metrics Server Error
+
+Error example:
+
+kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes"
+
+Error:
+ServiceUnavailable: the server is currently unable to handle the request
+
+Reason:
+Metrics Server cannot communicate with kubelet due to certificate verification issues.
+
+---
+
+8. Fix: Ignore Kubelet Certificate Verification
+
+Many clusters use self-signed certificates, so metrics-server fails TLS verification.
+
+Solution:
+Add the flag:
+
+--kubelet-insecure-tls
+
+---
+
+9. Steps to Fix Metrics Server
+
+Step 1: Edit the deployment
+
+kubectl edit deployment metrics-server -n kube-system
+
+Step 2: Add the flag in container args
+
+args:
+
+* --cert-dir=/tmp
+* --secure-port=4443
+* --kubelet-insecure-tls
+* --kubelet-preferred-address-types=InternalIP
+* --kubelet-use-node-status-port
+* --metric-resolution=15s
+
+Step 3: Save and exit.
+
+Kubernetes will automatically restart the metrics-server pod.
+
+---
+
+10. Verify the Fix
+
+Check API:
+
+kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes"
+
+Check resource metrics:
+
+kubectl top nodes
+
+kubectl top pods
+
+If metrics-server is working, CPU and Memory usage will be displayed.
+
+---
+
+11. Key Interview Point
+
+Metrics Server is a lightweight aggregator that collects CPU and memory usage from kubelets and exposes them through the metrics.k8s.io API for commands like kubectl top and for Horizontal Pod Autoscaling.
+
+
+
+
+
+
+
+
+
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-deployment
+
+  minReplicas: 1
+  maxReplicas: 3
+
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+
+
+
+
+HPA custom metrics: 
+  Request rates 
+  Queue lengths
+  Latency 
+
+
+
+topic need to visit: cluster maintainance 

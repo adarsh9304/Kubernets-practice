@@ -1,0 +1,267 @@
+================================================
+KUBERNETES NETWORK POLICIES - STUDY NOTES
+================================================
+
+1. WHAT IS A NETWORK POLICY?
+------------------------------------------------
+By default, pods in Kubernetes are "non-isolated". This means they accept traffic from any source (any pod, any namespace, or the outside world). 
+
+A Network Policy is a Kubernetes resource that controls the traffic flow at the IP address or port level (OSI Layer 3 or 4). Think of it as a virtual firewall specifically designed for your Pods.
+
+
+2. PREREQUISITES
+------------------------------------------------
+Network policies are implemented by the cluster's network plugin (CNI - Container Network Interface).
+- You MUST use a network solution that supports NetworkPolicy (e.g., Calico, Cilium, Weave Net).
+- Note: If you create a NetworkPolicy using a CNI that does not support it (like basic Flannel), the policy will be successfully created in the API, but it will be completely ignored by the cluster.
+
+
+3. CORE CONCEPTS & TERMINOLOGY
+------------------------------------------------
+Once a Network Policy selects a specific pod, that pod becomes "isolated". It will then immediately reject any traffic that is not explicitly allowed by a policy.
+
+- PodSelector: Uses labels to define which pod(s) the policy applies to.
+- PolicyTypes: Defines what kind of traffic is being restricted.
+    * Ingress: Incoming traffic TO the pod.
+    * Egress: Outgoing traffic FROM the pod.
+- Selectors (Rules): Define WHO can talk to the pod.
+    * podSelector: Allows traffic from/to specific pods in the same namespace.
+    * namespaceSelector: Allows traffic from/to pods in specific namespaces.
+    * ipBlock: Allows traffic from/to specific IP CIDR ranges (useful for external traffic).
+
+
+4. BASIC ANATOMY OF A NETWORK POLICY YAML
+------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: example-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db          # 1. This policy applies to pods with label role=db
+  policyTypes:
+  - Ingress             # 2. We are controlling incoming traffic
+  - Egress              # 3. We are controlling outgoing traffic
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: frontend # 4. Allow incoming traffic ONLY from pods with role=frontend
+    ports:
+    - protocol: TCP
+      port: 3306        # 5. Only on port 3306
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/24 # 6. Allow outgoing traffic ONLY to this IP range
+    ports:
+    - protocol: TCP
+      port: 5978
+
+
+5. MUST-KNOW PRACTICAL EXAMPLES
+------------------------------------------------
+
+A. Default Deny-All (Ingress & Egress)
+Best Practice: Apply this to every namespace to lock it down, then explicitly open up traffic as needed.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  podSelector: {}       # Selects ALL pods in the namespace
+  policyTypes:
+  - Ingress
+  - Egress
+
+
+B. Allow Traffic from a Specific Namespace
+Useful when you want your 'production' namespace to only accept traffic from the 'monitoring' namespace.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: production
+spec:
+  podSelector: {} 
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+
+
+6. IMPORTANT BEHAVIORS TO REMEMBER
+------------------------------------------------
+1. Additive Rules: Network Policies are additive. If you have multiple policies applying to the same pod, the pod will allow traffic if ANY of the policies allow it (Logical OR).
+
+2. Empty PodSelector: An empty "podSelector: {}" acts as a wildcard and selects ALL pods in the namespace where the policy is deployed.
+
+3. Cross-Namespace Limitations: To allow traffic from a pod in another namespace, you usually have to use both a namespaceSelector AND a podSelector together in the 'from' block.
+
+4. DNS Traffic: If you block all Egress traffic, your pods won't be able to resolve DNS (port 53). Always remember to explicitly allow Egress to Kube-DNS (CoreDNS) if you are doing a default-deny Egress policy!
+
+
+
+
+
+
+Networking basics:
+
+let's say we have system A and system B it could be laptops, desktops, vm on cloud whatever
+we connect system A and B through switch and switch create network between them 
+to connect them to a switch we need an interface on each host physical or virtual, depending on the host to see the interfaces
+
+we run command ip link on both system to see the interfaces for the host
+  ip link 
+
+now we assign the systems with ip addresses on the same network, for this we use command addr 
+  ip addr add 192.168.1.10/24 dev eth0
+
+now lets we have another netwrok and in that we have system c and system D
+now to communicate system A or B to C or D we need router, it is an intelligent device it's like server with many network ports 
+since it connects to the two separate network, it gets two ips assigned one on each network like 192.168.1.1 for network A and 192.168.2.1 for network B 
+
+
+system A = 192.168.1.10
+system B = 192.168.1.11
+system C = 192.168.2.10
+system D = 192.168.2.11
+network A = 192.168.1.0
+network B = 192.168.2.0
+route/gateway A = 192.168.1.1
+route/gateway B = 192.168.2.1
+
+
+when system B tries to send a packet to system C how does it know where the router is on the network to send the packet through? that's where we configure the system like gateway or route, it's like a door 
+
+to see existing routing configuration on the system run the route command
+  route 
+it displays the kernel's routing table 
+
+to configure a gateway on system B to reach the systems on network 2, run this below command
+  ip route add 192.168.2.0/24 via 192.168.1.1
+
+
+default gateway 0.0.0.0
+
+
+
+let's say we call it system B as db which has ip 192.168.1.11
+so we will write entry in /etc/hosts 
+whenever we put in etc host file it act as source of truth for system A, but it may not be true 
+to conversion between host name and ip called name resolution
+suppose if the ip of any host changes then we have to modify etc/hosts file for all of it's hosts, that's where we decided to move all these entries into single server who will manage centrally we call it as dns server 
+
+after that at every host we configure /etc/resolv.conf 
+  nameserver 192.168.1.100
+
+
+for every hostname, the host first looks into etc host file and if it cannot find it there it then looks at dns server, this order can be modified /etc/nsswitch.conf 
+
+8.8.8.8 is a common well known public name server available on the internet hosted by google that knows about all websites on the internet 
+
+
+
+
+
+networking in docker:
+
+when we run the container we have different networking options to choose from
+
+first is non network in which container cannot reach the outside world 
+
+second is host network in which container is attached to host network, there is no isolation, means if we deploy a web app listening on port 80 in the container then the web app available on port 80 on the host without having any additional port mapping 
+
+the third networking option is bridge, in this case internal private network is created by default it has ip 172.17.0.0 
+and each device connecting to this network get their own inetrnal private network address on this network 
+
+when docker installed on the host it creates an internal, private network called bridge, docker calls the network by the name bridge but on the host the network is created by the name docker zero, we can check via ip link command 
+
+
+
+
+
+
+
+=====================================================================
+KUBERNETES CNI (CONTAINER NETWORK INTERFACE) - STUDY NOTES
+=====================================================================
+
+1. WHAT IS CNI?
+---------------
+* CNI stands for Container Network Interface.
+* It is a CNCF (Cloud Native Computing Foundation) standard/specification.
+* It is NOT a software or a networking tool itself. It is a set of rules (API specification) that defines how a container should be connected to a network and how it should be assigned an IP address.
+* The actual software that implements these rules is called a "CNI Plugin" (e.g., Calico, Flannel, Cilium).
+
+2. WHY DOES KUBERNETES NEED CNI? (Separation of Concerns)
+---------------------------------------------------------
+* Kubernetes is a compute orchestrator. Its main job is to start, stop, and manage Pods.
+* Kubernetes does NOT want to deal with the complexities of underlying networks (AWS VPC, Azure VNet, on-premise routers, etc.).
+* Therefore, Kubernetes delegates all networking tasks to CNI plugins. 
+* Rule: Kubernetes says, "I will create the Pod, but I will call the CNI plugin to handle the IP assignment and networking."
+
+3. HOW CNI WORKS UNDER THE HOOD (Step-by-Step Flow)
+---------------------------------------------------
+When a new Pod is deployed in Kubernetes, the following technical steps occur:
+
+* STEP 1: Kubelet Creates a Network Namespace
+  The Kubelet (Kubernetes node agent) creates an isolated "Network Namespace" for the new Pod. At this stage, the Pod has no network connection or IP address.
+
+* STEP 2: Kubelet Calls the CNI Plugin
+  Kubelet executes the CNI plugin binary (stored in /opt/cni/bin/ on the node) and sends an "ADD" command via JSON configuration.
+
+* STEP 3: CNI Creates a Virtual Ethernet (veth) Pair
+  The CNI plugin creates a "veth pair" (think of it as a virtual LAN cable with two ends):
+  - End 1 (eth0): Placed inside the Pod's isolated Network Namespace.
+  - End 2 (vethX): Placed in the Host Node's root namespace.
+
+* STEP 4: Connecting to a Virtual Switch
+  The CNI plugin connects the Host's end of the veth pair to a virtual switch (Linux Bridge, e.g., cni0) on the node. This connects the Pod to the Node's network.
+
+* STEP 5: IPAM (IP Address Management)
+  The CNI plugin calls its IPAM component. IPAM selects a free IP address from the cluster's CIDR block and assigns it to the Pod's 'eth0' interface.
+
+* STEP 6: Updating Route Tables
+  Finally, the CNI updates the routing tables (iptables/IPVS) on the Node. This ensures that network traffic knows how to reach the newly created Pod.
+
+4. WHAT HAPPENS WHEN A POD IS DELETED?
+--------------------------------------
+* Kubelet calls the CNI plugin with a "DEL" command.
+* The CNI plugin deletes the 'veth' pair, destroying the network connection.
+* It removes the routing rules from the Node.
+* It tells IPAM to release the IP address back to the free pool so it can be used by future Pods.
+
+5. POPULAR CNI PLUGINS
+----------------------
+* Flannel: Very simple, lightweight. Great for basic cluster networking. (Uses an Overlay network).
+* Calico: Most popular for on-premise/hybrid. Supports advanced "Network Policies" (Security/Firewall rules between Pods).
+* Cilium: Highly advanced and modern. Uses eBPF technology for very fast networking and deep security observability.
+* AWS VPC CNI / Azure CNI: Cloud-native plugins. They assign actual Cloud VPC IP addresses directly to the Pods (No Overlay, high performance).
+
+6. KEY TAKEAWAYS FOR CLOUD ENGINEERS
+------------------------------------
+If you are managing Kubernetes in the Cloud (EKS, GKE, AKS), the CNI is mostly fully managed. You only need to care about:
+* IP Exhaustion: Ensuring your Cloud Subnets have enough free IPs, because every Pod will consume a real IP address (especially in AWS EKS).
+* Network Policies: Knowing how to write YAML files to restrict which Pod can talk to which Pod (acting as internal firewalls).
+=====================================================================
+
+
+
+
+to check what network interface configured for the cluster connectivity on the control plane we will run the command: 
+    ip address
+  
+
+
+
+
+

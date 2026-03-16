@@ -1,0 +1,157 @@
+# KUBERNETES RBAC + USER SWITCHING SIMPLE NOTES
+
+In Kubernetes, access control works in two main steps: Authentication and Authorization.
+
+Authentication means identifying WHO the user is. Authorization means checking WHAT the user is allowed to do.
+
+When a command like `kubectl get pods` is executed, the process works like this:
+
+User → Authentication → Authorization (RBAC) → API Server → Resource
+
+Authentication in Kubernetes is handled using the **kubeconfig file** (usually located at `~/.kube/config`). This file tells kubectl which cluster to connect to, which user identity to use, and which namespace to operate in. The kubeconfig file mainly contains three important things: clusters, users, and contexts.
+
+The **user section** in kubeconfig defines the identity credentials used to connect to the cluster. For example:
+
+kubectl config set-credentials adam --client-key=adam.key --client-certificate=adam.crt
+
+This means when kubectl connects to the Kubernetes API server, it will authenticate as user **adam** using the provided certificate and key.
+
+The **context** in kubeconfig connects three things together: Cluster + User + Namespace. It acts like a profile that tells kubectl how to connect.
+
+Example:
+
+kubectl config set-context adam-context --cluster=kubernetes --user=adam --namespace=default
+
+This means that when the context `adam-context` is used, kubectl will connect to the cluster `kubernetes`, authenticate as user `adam`, and operate in the `default` namespace.
+
+To start using this user identity, we switch the context:
+
+kubectl config use-context adam-context
+
+Now every kubectl command will run as user **adam**.
+
+After Kubernetes knows the user identity (Authentication), it checks the permissions using **RBAC (Role-Based Access Control)**.
+
+RBAC mainly uses four resources: Role, ClusterRole, RoleBinding, and ClusterRoleBinding.
+
+A **Role** defines permissions such as which resources can be accessed and what actions can be performed.
+
+Example Role:
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+name: pod-reader
+namespace: default
+
+rules:
+
+* apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get","list"]
+
+This role allows reading and listing pods in the default namespace.
+
+A **RoleBinding** connects the role with a user. It assigns the permissions defined in the role to a specific user.
+
+Example RoleBinding:
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+name: read-pods-adam
+namespace: default
+
+subjects:
+
+* kind: User
+  name: adam
+  apiGroup: rbac.authorization.k8s.io
+
+roleRef:
+kind: Role
+name: pod-reader
+apiGroup: rbac.authorization.k8s.io
+
+This means the user **adam** now has the permissions defined in the role **pod-reader**.
+
+So the responsibilities are different:
+
+* kubeconfig user → defines identity (who the user is)
+* context → defines which cluster, user, and namespace kubectl should use
+* role → defines permissions (what actions are allowed)
+* rolebinding → assigns those permissions to a user
+
+Example practical scenario:
+
+Suppose you are logged in as the **root/admin user** and you want to allow user **adam** to list pods.
+
+Step 1: Create a role that allows reading pods
+
+kubectl create role pod-reader --verb=get,list --resource=pods --namespace=default
+
+Step 2: Bind the role to the user adam
+
+kubectl create rolebinding adam-pod-reader --role=pod-reader --user=adam --namespace=default
+
+Step 3: Verify the permission
+
+kubectl auth can-i list pods --as=adam
+
+If RBAC is correct, the output will be:
+
+yes
+
+Step 4: Add the user adam to kubeconfig
+
+kubectl config set-credentials adam --client-certificate=adam.crt --client-key=adam.key
+
+Step 5: Create a context for the user
+
+kubectl config set-context adam-context --cluster=kubernetes --user=adam --namespace=default
+
+Step 6: Switch to that user
+
+kubectl config use-context adam-context
+
+Step 7: Run the command as adam
+
+kubectl get pods
+
+If everything is configured correctly, the pods will be listed.
+
+Important understanding:
+kubeconfig is responsible for **authentication (identity)** and RBAC is responsible for **authorization (permissions)**. Both are required for a user to successfully access Kubernetes resources.
+
+
+
+
+Private key se sign hota hai
+Public key se verify hota hai
+
+kubectl
+   │
+   │ sign using adam.key
+   ▼
+API Server
+   │
+   │ verify using adam.crt
+   ▼
+User identified = adam
+   │
+   ▼
+RBAC check (Role / RoleBinding)
+   │
+   ▼
+Resource access allowed
+
+concept of self approve the request
+
+
+named scoped: pods, deployment, rs, services 
+cluster scoped : namespace, nodes 
+
+role level permission: list pods, watch pods, get pods 
+cluster level permission: list nodes, watch nodes, get nodes 
+
+kubectl api-resources namespaced=true/false 

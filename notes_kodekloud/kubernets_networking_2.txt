@@ -1,0 +1,15 @@
+kubernets expect us to implement a networking solution 
+
+kubernets expects this things:
+    every pod should have an ip address
+    every pod should be able to comminicate with every other pod in the same node 
+    every pod should be able to comminicate with every other pod on other nodes without NAT 
+
+
+let's say nodes are part of an external network and has ip address in the 192.168.1. series
+    like node 1 = 192.168.1.11
+        node 2 = 192.168.1.12
+        node 3 = 192.168.1.13
+
+
+when containers are created, kubernets creates network namespace for them, to enable communication between them we attach these namespaces to a network 
